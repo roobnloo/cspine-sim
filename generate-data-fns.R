@@ -53,7 +53,7 @@ generate_mg <- function(opts = gamma_options()) {
   mg_bern <- matrix(rbinom(p * q, 1, opts$prob), p, q)
   mg <- rnorm(p * q) * mg_bern
   mg <- mg * mg_bern
-  if (!is.null(opts$frob)) {
+  if (!is.null(opts$frob) && any(abs(mg) > 0)) {
     mg <- mg / sqrt(sum(mg^2))
     mg <- mg * opts$frob
   }
@@ -93,25 +93,27 @@ generate_tb <- function(opts = beta_options()) {
   )
   tB[, , 1] <- tb + t(tb)
 
-  for (j in seq(2, opts$nz_cov + 1)) {
-    all_zero <- TRUE
-    while (all_zero) {
-      g2 <- sample_gnp(p, opts$ve, directed = FALSE, loops = FALSE) # random network
-      A <- as_adjacency_matrix(g2, sparse = FALSE)
-      rind <- sample(1:p, p, replace = FALSE)
-      A <- A[rind, rind]
-      tb <- matrix(0, p, p)
-      tb[lower.tri(A) & A > 0] <- sample(
-        c(
-          runif(sum(A), -u, -l),
-          runif(sum(A), l, u)
-        ),
-        sum(A) / 2,
-        replace = FALSE
-      )
-      tB[, , j] <- tb + t(tb)
-      if (any(tB[, , j] != 0)) {
-        all_zero <- FALSE
+  if (opts$ve > 0) {
+    for (j in seq(2, opts$nz_cov + 1)) {
+      all_zero <- TRUE
+      while (all_zero) {
+        g2 <- sample_gnp(p, opts$ve, directed = FALSE, loops = FALSE) # random network
+        A <- as_adjacency_matrix(g2, sparse = FALSE)
+        rind <- sample(1:p, p, replace = FALSE)
+        A <- A[rind, rind]
+        tb <- matrix(0, p, p)
+        tb[lower.tri(A) & A > 0] <- sample(
+          c(
+            runif(sum(A), -u, -l),
+            runif(sum(A), l, u)
+          ),
+          sum(A) / 2,
+          replace = FALSE
+        )
+        tB[, , j] <- tb + t(tb)
+        if (any(tB[, , j] != 0)) {
+          all_zero <- FALSE
+        }
       }
     }
   }

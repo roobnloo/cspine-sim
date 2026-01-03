@@ -26,6 +26,6 @@ RUN wget https://github.com/cli/cli/releases/download/v${GITHUB_CLI_VERSION}/gh_
 
 USER rstudio
 RUN R -e "dotR <- file.path(Sys.getenv('HOME'), '.R'); dir.create(dotR); Makevars <- file.path(dotR, 'Makevars'); file.create(Makevars); cat('\nCXXFLAGS=-O3 -fPIC -Wno-unused-variable -Wno-unused-function -Wno-ignored-attributes', 'CXX = g++', 'CXX11 = g++', file = Makevars, sep = '\n', append = TRUE)"
-RUN R -e "dotRprofile <- file.path(Sys.getenv('HOME'), '.Rprofile'); file.create(dotRprofile); cat('local({r <- getOption(\"repos\")', 'r[\"CRAN\"] <- \"https://cloud.r-project.org\"', 'options(repos=r, pkg.build_extra_flags=FALSE)', '})', '.libPaths(c(\"~/.R/lib\", .libPaths()))', file = dotRprofile, sep = '\n', append = TRUE)"
-RUN install2.r languageserver httpgd tictoc igraph
+RUN R -e "dotRprofile <- file.path(Sys.getenv('HOME'), '.Rprofile'); file.create(dotRprofile); cat('local({r <- getOption(\"repos\")', 'r[\"CRAN\"] <- \"https://cloud.r-project.org\"', 'options(repos=r, pkg.build_extra_flags=FALSE)', '.libPaths(c(\"~/.R/lib\", .libPaths()))', '})',  file = dotRprofile, sep = '\n', append = TRUE)"
+RUN install2.r languageserver httpgd tictoc igraph patchwork
 RUN installGithub.r roobnloo/cspine

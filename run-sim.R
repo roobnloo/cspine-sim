@@ -1,6 +1,9 @@
 library(cspine)
 source("performance.R")
-source("gmmreg.R")
+# source("gmmreg.R")
+source("gmmreg_ssnal.R")
+RhpcBLASctl::omp_set_num_threads(1)
+RhpcBLASctl::blas_set_num_threads(1)
 
 args <- commandArgs(trailingOnly = TRUE)
 p <- as.integer(args[1])
@@ -8,7 +11,11 @@ q <- as.integer(args[2])
 n <- as.integer(args[3])
 setting <- args[4]
 stopifnot(setting %in% c("natural", "original"))
-# p <- 25; q<-100; n<-200; setting <- "original"
+p <- 25
+q <- 50
+n <- 200
+setting <- "original"
+i <- 1
 
 setting_str <- sprintf("p%dq%d-n%d-%s", p, q, n, setting)
 data_file <- file.path("data", paste0(setting_str, ".rds"))
@@ -28,16 +35,16 @@ for (i in seq_len(nrep)) {
   message("Rep ", i)
   s <- generated[[i]]
   tictoc::tic()
-  g_result <- gmmreg(s$X, s$U, ncores = 13)
+  g_result <- gmmreg_ssnal(s$X, s$U, ncores = 13)
   tictoc::toc()
   pgs <- performance(g_result, s, tb_true, mg_true)
-  reggmm_results[i, ] <- pgs
   tictoc::tic()
   c_result <- cspine(s$X, s$U, ncores = 13)
   tictoc::toc()
   pcs <- performance(c_result, s, tb_true, mg_true)
-  cspine_results[i, ] <- pcs
   print(rbind(round(pgs, 3), round(pcs, 3)))
+  reggmm_results[i, ] <- pgs
+  cspine_results[i, ] <- pcs
   saveRDS(reggmm_results[1:i, ], file.path("out", paste0(setting_str, "-result-RegGMM.rds")))
   saveRDS(cspine_results[1:i, ], file.path("out", paste0(setting_str, "-result-cspine.rds")))
 }

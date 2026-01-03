@@ -26,7 +26,7 @@
             ],
             "settings": {
                 "r.rterm.linux": "/usr/local/bin/radian",
-                "r.lsp.path": "/usr/local/bin/R",
+                "r.rpath.linux": "/usr/local/bin/R",
                 "r.sessionWatcher": true,
                 "r.plot.useHttpgd": true,
                 "r.bracketedPaste": true

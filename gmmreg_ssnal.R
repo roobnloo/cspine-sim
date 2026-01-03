@@ -1,5 +1,6 @@
-library(sparsegl)
+library(sglssnal)
 
+# [X, u1 X, ..., uq X]
 intxmx <- function(X, U) {
   q <- ncol(U)
   iU <- cbind(1, U)
@@ -33,14 +34,14 @@ predict.gmmreg <- function(fit, newcovar) {
 }
 
 
-gmmreg <- function(
+gmmreg_ssnal <- function(
     responses, covariates, asparse = seq(0.1, 1, by = 0.1),
-    nlambda = 100, lam_max = NULL, lambda_factor = 1e-4,
+    nlambda = 100, lam_max = NULL, lambda_factor = 0.01,
     nfolds = 5, verbose = FALSE, ncores = 1, skip_stage1 = FALSE) {
   stopifnot(
     is.matrix(responses), is.matrix(covariates),
     nrow(responses) == nrow(covariates),
-    all(asparse >= 0), all(asparse <= 1)
+    all(asparse > 0), all(asparse <= 1)
   )
   p <- ncol(responses)
   q <- ncol(covariates)
@@ -56,9 +57,7 @@ gmmreg <- function(
     message("Stage 1")
 
     nodewise_gamma <- function(node) {
-      result <- cv.sparsegl(covariates, responses[, node], seq_len(q),
-        asparse = 1, intercept = TRUE, standardize = TRUE
-      )
+      result <- glmnet::cv.glmnet(covariates, responses[, node], alpha = 1)
       message(paste(node, " "), appendLF = FALSE)
       gamma <- as.numeric(coef(result, s = "lambda.min"))
       return(gamma)
@@ -86,67 +85,74 @@ gmmreg <- function(
   bhat_tens <- array(0, dim = c(p, p, q + 1))
 
   # Estimated variances
-  varhat <- vector(length = p)
+  sigma2 <- vector(length = p)
 
   Z <- responses - (g0 + covariates %*% t(ghat_mx))
-  intmx <- intxmx(Z, covariates)
+  zsd <- sqrt(colSums(Z^2) / n)
+  zsd[abs(zsd) < 1e-9] <- 1
+  umean <- colMeans(covariates)
+  u <- sweep(covariates, 2, umean, "-")
+  usd <- sqrt(colSums(u^2) / n)
+  usd[abs(usd) < 1e-9] <- 1
+  u <- sweep(u, 2, usd, "/")
 
-  foldid <- sample(cut(seq_len(n), nfolds, labels = FALSE))
   # foldid <- rep(1:5, each = n / nfolds)
   nodewise_beta <- function(node) {
     y <- Z[, node]
     y <- y - mean(y)
-    mx <- intmx[, -(seq(0, q) * p + node)]
-    mxs <- as.matrix(mx %*% Matrix::Diagonal(x = 1 / sqrt(Matrix::colSums(mx^2))))
+    z_scale <- sweep(Z, 2, zsd, "/")[, -node]
+    mx <- intxmx(z_scale, u)
 
     if (is.null(lam_max)) {
-      lam1_max <- max(abs(crossprod(mxs, y)))
+      mina <- min(asparse)
+      if (mina == 0) {
+        mina <- 1
+      }
+      lam1_max <- max(abs(crossprod(mx, y))) / mina
     }
     lambda1 <- lam1_max * exp(seq(log(1), log(lambda_factor), length = nlambda))
 
     # There are (q + 1) groups and the size of each group is p-1
-    grp_idx <- rep(1:(q + 1), each = p - 1)
+    grp_vec <- seq(1, nvars)
+    start_ids <- 1 + (p - 1) * seq(0, q)
+    end_ids <- start_ids + p - 2
+    grp_idx <- rbind(start_ids, end_ids)
+    pfgroup <- c(0, rep(1, q))
 
-    cvm_mx <- matrix(nrow = nlambda, ncol = nasparse)
-    betas <- matrix(nrow = nvars, ncol = nasparse)
-    mse <- numeric(nasparse)
-    pf_group <- c(0, rep(1, q))
+    foldid <- cut(sample(seq_len(n)), nfolds, labels = FALSE)
+    cv_result <- sglssnal::cv.sglssnal(
+      mx, y, grp_vec, grp_idx, asparse, lambda1,
+      pfgroup = pfgroup, foldid = foldid, quietall = TRUE
+    )
 
-    for (asid in seq_len(nasparse)) {
-      cv_result <- cv.sparsegl(
-        mx, y, grp_idx,
-        asparse = asparse[asid],
-        pf_group = pf_group,
-        foldid = foldid,
-        lambda = lambda1
-      )
-      cvm_mx[, asid] <- cv_result$cvm
-      lam_min_ind <- which.min(cv_result$cvm)
-      fit <- cv_result$sparsegl.fit
-      betas[, asid] <- as.numeric(fit$beta[, lam_min_ind])
-      mse[asid] <- fit$mse[lam_min_ind]
+    nnz <- cv_result$info$nnz
+    sigma2 <- 1
+    if (n > nnz) {
+      sigma2 <- cv_result$info$mse * n / abs(n - nnz)
     }
-    cvind <- arrayInd(which.min(cvm_mx), dim(cvm_mx))
-    alpha_min_ind <- cvind[2]
-    beta_cv <- betas[, alpha_min_ind]
 
-    # Compute nnz based on largest magnitude coefficients
-    bcs <- cumsum(sort(abs(beta_cv), decreasing = TRUE))
-    nnz <- which(bcs >= 0.999 * sum(abs(beta_cv)))[1]
-    if (nnz >= n) {
-      sigma2 <- 1
-    } else {
-      sigma2 <- mse[alpha_min_ind] * n / abs(n - nnz)
+    x_unstd <- cv_result$x
+    for (h in seq_len(q)) {
+      x_unstd[1:(p - 1)] <- x_unstd[1:(p - 1)] -
+        x_unstd[(p - 1) * h + 1:(p - 1)] * umean[h] / usd[h]
     }
+    x_unstd[1:(p - 1)] <- x_unstd[1:(p - 1)] / zsd[-node]
+
+    for (h in seq_len(q)) {
+      x_unstd[(p - 1) * h + 1:(p - 1)] <- x_unstd[(p - 1) * h + 1:(p - 1)] / (usd[h] * zsd[-node])
+    }
+    x_unstd[abs(x_unstd) < 1e-9] <- 0
 
     message(paste(node, " "), appendLF = FALSE)
     return(list(
-      beta = beta_cv,
-      varhat = sigma2,
-      cvind = cvind,
-      mse = cvm_mx,
+      beta = x_unstd,
+      sigma2 = sigma2,
+      cvm = cv_result$cv_info$cvm,
+      cv_idx = cv_result$cv_info$cv_idx,
+      mse = cv_result$info$mse,
       y = y,
-      mx = mx
+      mx = mx,
+      lambda = lambda1
     ))
   }
 
@@ -166,27 +172,32 @@ gmmreg <- function(
   )
 
   cv_mse <- array(dim = c(p, nlambda, nasparse))
+  cv_idx <- matrix(nrow = p, ncol = 2)
+  lambdas <- matrix(nrow = p, ncol = nlambda)
   for (node in seq_len(p)) {
-    varhat[node] <- result[[node]]$varhat
+    sigma2[node] <- result[[node]]$sigma2
     bhat_tens[node, -node, ] <- result[[node]]$beta
-    cv_mse[node, , ] <- result[[node]]$mse
+    cv_mse[node, , ] <- result[[node]]$cvm
+    cv_idx[node, ] <- result[[node]]$cv_idx
     reg$y[node, ] <- result[[node]]$y
     reg$mx[node, , ] <- result[[node]]$mx
+    lambdas[node, ] <- result[[node]]$lambda
   }
 
   bhat_symm <- array(0, dim = c(p, p, q + 1))
   for (h in seq_len(q + 1)) {
-    bhat_symm[, , h] <- symmetrize(-diag(1 / varhat) %*% bhat_tens[, , h])
+    bhat_symm[, , h] <- symmetrize(-diag(1 / sigma2) %*% bhat_tens[, , h])
   }
 
   result <- list(
     gamma = ghat_mx,
     beta = bhat_symm,
     beta_raw = bhat_tens,
-    sigma2 = varhat,
+    sigma2 = sigma2,
     cv_mse = cv_mse,
+    cv_idx = cv_idx,
     reg = reg,
-    intmx = intmx
+    lambdas = lambdas
   )
   class(result) <- "gmmreg"
   result

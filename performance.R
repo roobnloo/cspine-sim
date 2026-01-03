@@ -5,11 +5,12 @@ performance <- function(fit, s, tb_true, mg_true, simple = FALSE) {
   stopifnot(all(dim(fit$beta) == dim(tb_true)))
   p <- dim(tb_true)[1]
   n <- nrow(s$X)
-  stats <- vector(length = 9)
-  names(stats) <- c(
+  metrics <- c(
     "tpr", "fpr", "tpr_pop", "fpr_pop", "tpr_cov", "fpr_cov",
-    "beta_err", "omega_err", "mean_err"
+    "beta_err", "omega_err", "gamma_err", "mean_err", "omega_tpr", "omega_fpr"
   )
+  stats <- numeric(length(metrics))
+  names(stats) <- metrics
   stats["tpr"] <- sum(fit$beta != 0 & tb_true != 0) / sum(tb_true != 0)
   stats["fpr"] <- sum(fit$beta != 0 & tb_true == 0) / sum(tb_true == 0)
 
@@ -20,8 +21,10 @@ performance <- function(fit, s, tb_true, mg_true, simple = FALSE) {
   stats["fpr_cov"] <- sum(fit$beta[, , -1] != 0 & tb_true[, , -1] == 0) / sum(tb_true[, , -1] == 0)
 
   beta_err <- 0
+  gamma_err <- 0
   for (i in 1:p) {
     beta_err <- beta_err + sqrt(sum((tb_true[i, -i, ] + fit$beta_raw[i, -i, ])^2))
+    gamma_err <- gamma_err + sqrt(sum((mg_true[i, ] - fit$gamma[i, ])^2))
   }
   stats["beta_err"] <- beta_err
 
@@ -30,8 +33,12 @@ performance <- function(fit, s, tb_true, mg_true, simple = FALSE) {
     return(stats[c("tpr", "fpr", "tpr_pop", "fpr_pop", "tpr_cov", "fpr_cov", "beta_err")])
   }
 
+  stats["gamma_err"] <- gamma_err
+
   omega_err <- 0
   mean_err <- 0
+  omega_tpr <- 0
+  omega_fpr <- 0
   iu <- cbind(1, s$U)
 
   for (i in 1:n) {
@@ -42,12 +49,16 @@ performance <- function(fit, s, tb_true, mg_true, simple = FALSE) {
     omhat <- p$precision
     diag(omhat) <- 0
     omega_err <- omega_err + sum((omega - omhat)^2) / n
-
     mean_err <- mean_err + sum((s$mumx[i, ] - p$mean)^2) / n
-    # print(p$mean / n)
+    omega_tpr <- omega_tpr + sum(omhat != 0 & omega != 0) / sum(omega != 0)
+    omega_fpr <- omega_fpr + sum(omhat != 0 & omega == 0) / sum(omega == 0)
   }
+  omega_tpr <- omega_tpr / n
+  omega_fpr <- omega_fpr / n
   stats["omega_err"] <- omega_err
   stats["mean_err"] <- mean_err
+  stats["omega_tpr"] <- omega_tpr
+  stats["omega_fpr"] <- omega_fpr
 
   return(stats)
 }
@@ -97,7 +108,7 @@ beta_viz_compare <- function(computed, actual, cov_lbl, guides = T,
   comp + act
 }
 
-beta_viz_list <- function(beta_list, cov_lbl, guides = T, tileborder = T) {
+beta_viz_list <- function(beta_list, cov_lbl = "", guides = T, tileborder = T) {
   lim <- max(abs(unlist(beta_list)))
 
   plots <- vector(mode = "list", length = length(beta_list))
@@ -117,39 +128,13 @@ beta_viz_list <- function(beta_list, cov_lbl, guides = T, tileborder = T) {
   Reduce(`+`, plots)
 }
 
-cv_result_plot <- function(cv_result, node) {
-  df <- expand.grid(
-    lambda = seq_along(cv_result$lambdapath[, node]),
-    sglmix = seq_along(cv_result$sglmixpath),
-    gmix = seq_along(cv_result$gmixpath)
-  )
-  df$error <- as.numeric(cv_result$cv_mse[node, , , ])
-  opt_lambda_idx <- cv_result$cv_lambda_idx[node]
-  opt_gmix_idx <- cv_result$cv_gmix_idx[node]
-  p <- ggplot(df) +
-    geom_tile(
-      color = "gray80",
-      mapping = aes(x = gmix, y = lambda, fill = error)
-    ) +
-    geom_point(
-      mapping = aes(x = x, y = y),
-      data = data.frame(x = opt_gmix_idx, y = opt_lambda_idx),
-      color = "tomato"
-    ) +
-    scale_x_continuous(
-      breaks = seq_along(cv_result$gmixpath),
-      labels = cv_result$gmixpath
-    ) +
-    scale_y_reverse(
-      breaks = seq_along(cv_result$lambdapath[, node]),
-      labels = round(cv_result$lambdapath[, node], 3)
-    ) +
-    scale_fill_gradient(low = "white", high = "black") +
-    facet_wrap(~sglmix, nrow = 1) +
-    guides(x = "none", y = "none", fill = "none") +
-    coord_fixed() +
-    theme_classic()
-  return(p)
+cv_result_plot <- function(fit) {
+  for (node in 1:25) {
+    par(mfrow = c(3, 3))
+    for (i in 1:9) {
+      plot(fit$cvm[, i, node])
+    }
+  }
 }
 
 gamma_viz <- function(gamma_mx, title = "", limits = NULL) {
