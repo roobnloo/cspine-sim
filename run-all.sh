@@ -8,3 +8,6 @@ Rscript run-sim.R 25 50 200 natural
 Rscript run-sim.R 25 100 200 natural
 Rscript run-sim.R 25 50 400 natural
 Rscript run-sim.R 25 100 400 natural
+Rscript run-sim-varying-sparsity.R beta
+Rscript run-sim-varying-sparsity.R gamma
+Rscript run-sim-varying-sparsity-original.R

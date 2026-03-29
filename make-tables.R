@@ -3,6 +3,7 @@ library(dplyr)
 library(stringr)
 
 prefix <- "set0"
+out_dir <- "out"
 
 # methods <- factor(c("cspine", "RegGMM", "ANTAC", "glasso", "MB"),
 #                   levels = c("cspine", "RegGMM", "ANTAC", "glasso", "MB"))
@@ -40,13 +41,13 @@ for (rowid in seq_len(nrow(meandf))) {
   switch(as.character(row$method),
     cspine = {
       path <- sprintf(
-        "out/p%dq%d-n%d-%s-result-%s.rds",
+        "%s/p%dq%d-n%d-%s-result-%s.rds", out_dir,
         row[[2]], row[[3]], row[[4]], row[[5]], row$method
       )
     },
     RegGMM = {
       path <- sprintf(
-        "out/p%dq%d-n%d-%s-result-%s.rds",
+        "%s/p%dq%d-n%d-%s-result-%s.rds", out_dir,
         row[[2]], row[[3]], row[[4]], row[[5]], row$method
       )
     },
@@ -280,7 +281,7 @@ main_table <- function(model = "natural") {
   cat(latex_code)
 }
 
-# main_table_mean("natural")
-# main_table_mean("original")
+# main_table("natural")
+# main_table("original")
 supp_table("natural")
 supp_table("original")

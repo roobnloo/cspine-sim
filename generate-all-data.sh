@@ -8,3 +8,4 @@ Rscript generate-data.R 25 50 200 natural 233
 Rscript generate-data.R 25 100 200 natural 1341
 Rscript generate-data.R 25 50 400 natural 2330
 Rscript generate-data.R 25 100 400 natural 13410
+Rscript generate-data-varying-sparsity.R

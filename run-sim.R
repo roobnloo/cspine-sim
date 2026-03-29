@@ -1,7 +1,6 @@
 library(cspine)
 source("performance.R")
-# source("gmmreg.R")
-source("gmmreg_ssnal.R")
+source("gmmreg.R")
 RhpcBLASctl::omp_set_num_threads(1)
 RhpcBLASctl::blas_set_num_threads(1)
 
@@ -11,10 +10,10 @@ q <- as.integer(args[2])
 n <- as.integer(args[3])
 setting <- args[4]
 stopifnot(setting %in% c("natural", "original"))
-p <- 25
-q <- 50
-n <- 200
-setting <- "original"
+# p <- 25
+# q <- 50
+# n <- 200
+# setting <- "original"
 i <- 1
 
 setting_str <- sprintf("p%dq%d-n%d-%s", p, q, n, setting)
@@ -24,10 +23,10 @@ tb_true <- generated[[length(generated)]]$tb
 mg_true <- generated[[length(generated)]]$mg
 nrep <- length(generated) - 1
 
-metrics <- c("tpr", "fpr", "tpr_pop", "fpr_pop", "tpr_cov", "fpr_cov", "beta_err", "omega_err", "mean_err")
-reggmm_results <- matrix(nrow = nrep, ncol = 9)
+metrics <- c("tpr", "fpr", "tpr_pop", "fpr_pop", "tpr_cov", "fpr_cov", "beta_err", "omega_err", "gamma_err", "mean_err", "omega_tpr", "omega_fpr")
+reggmm_results <- matrix(nrow = nrep, ncol = length(metrics))
 colnames(reggmm_results) <- metrics
-cspine_results <- matrix(nrow = nrep, ncol = 9)
+cspine_results <- matrix(nrow = nrep, ncol = length(metrics))
 colnames(cspine_results) <- metrics
 
 dir.create("./out", showWarnings = FALSE)
@@ -35,7 +34,7 @@ for (i in seq_len(nrep)) {
   message("Rep ", i)
   s <- generated[[i]]
   tictoc::tic()
-  g_result <- gmmreg_ssnal(s$X, s$U, ncores = 13)
+  g_result <- gmmreg(s$X, s$U, ncores = 13)
   tictoc::toc()
   pgs <- performance(g_result, s, tb_true, mg_true)
   tictoc::tic()

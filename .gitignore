@@ -2,3 +2,6 @@ scratch/
 out/
 data/
 .lintr
+*.code-workspace
+*.rds
+*.pdf
