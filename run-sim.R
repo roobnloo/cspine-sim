@@ -1,49 +1,59 @@
-library(cspine)
+# Usage: Rscript run-sim.R --p=25 --q=50 --nobs=200 --delta=1 [--nrep=100]
+source("impl/cspine_ssnal.R")
+source("impl/gmmreg_ssnal.R")
 source("performance.R")
-source("gmmreg.R")
 RhpcBLASctl::omp_set_num_threads(1)
 RhpcBLASctl::blas_set_num_threads(1)
 
 args <- commandArgs(trailingOnly = TRUE)
-p <- as.integer(args[1])
-q <- as.integer(args[2])
-n <- as.integer(args[3])
-setting <- args[4]
-stopifnot(setting %in% c("natural", "original"))
-# p <- 25
-# q <- 50
-# n <- 200
-# setting <- "original"
-i <- 1
 
-setting_str <- sprintf("p%dq%d-n%d-%s", p, q, n, setting)
-data_file <- file.path("data", paste0(setting_str, ".rds"))
-generated <- readRDS(data_file)
-tb_true <- generated[[length(generated)]]$tb
-mg_true <- generated[[length(generated)]]$mg
-nrep <- length(generated) - 1
+parse_arg <- function(args, key, default = NULL) {
+  pat <- paste0("^--", key, "=(.+)$")
+  m <- regmatches(args, regexpr(pat, args, perl = TRUE))
+  if (length(m) == 0L) default else sub(pat, "\\1", m)
+}
 
-metrics <- c("tpr", "fpr", "tpr_pop", "fpr_pop", "tpr_cov", "fpr_cov", "beta_err", "omega_err", "gamma_err", "mean_err", "omega_tpr", "omega_fpr")
-reggmm_results <- matrix(nrow = nrep, ncol = length(metrics))
-colnames(reggmm_results) <- metrics
-cspine_results <- matrix(nrow = nrep, ncol = length(metrics))
-colnames(cspine_results) <- metrics
+p <- as.integer(parse_arg(args, "p"))
+q <- as.integer(parse_arg(args, "q"))
+nobs <- as.integer(parse_arg(args, "nobs"))
+delta <- as.numeric(parse_arg(args, "delta"))
+nrep <- as.integer(parse_arg(args, "nrep", default = 100))
+for (req in c("p", "q", "nobs", "delta")) {
+  if (is.na(get(req))) stop("Required argument missing: --", req)
+}
+if (delta < 0 || delta > 1) stop("--delta must be between 0 and 1 inclusive")
 
-dir.create("./out", showWarnings = FALSE)
+true_param_path <- file.path("data", sprintf("coef_p%dq%d.rds", p, q))
+if (!file.exists(true_param_path)) stop("Generate data first.")
+true_param <- tryCatch(
+  readRDS(true_param_path),
+  error = function(e) stop("Generate data first.")
+)
+setting_str <- sprintf("p%dq%d-n%d-d%.2f", p, q, nobs, delta)
+metrics <- c("tpr", "fpr", "tpr_pop", "fpr_pop", "tpr_cov", "fpr_cov", "beta_err", "gamma_err")
+
+out_dir <- file.path("out", setting_str)
+dir.create(out_dir, showWarnings = FALSE)
+reggmm_csv <- file.path(out_dir, "result-RegGMM.csv")
+cspine_csv <- file.path(out_dir, "result-cspine.csv")
+write(paste(metrics, collapse = ","), reggmm_csv)
+write(paste(metrics, collapse = ","), cspine_csv)
+
 for (i in seq_len(nrep)) {
   message("Rep ", i)
-  s <- generated[[i]]
+  x_mat <- as.matrix(read.table(file.path("data", setting_str, sprintf("X_%d.csv", i)), sep = ","))
+  u_mat <- as.matrix(read.table(file.path("data", setting_str, sprintf("U_%d.csv", i)), sep = ","))
   tictoc::tic()
-  g_result <- gmmreg(s$X, s$U, ncores = 13)
+  g_result <- gmmreg_ssnal(x_mat, u_mat, alpha = 0.75, nl1 = 100, lambda_factor = 0.1, num_cores = 25)
   tictoc::toc()
-  pgs <- performance(g_result, s, tb_true, mg_true)
+  pgs <- performance(g_result$beta, g_result$gamma, true_param$tb, true_param$mg)
   tictoc::tic()
-  c_result <- cspine(s$X, s$U, ncores = 13)
+  c_result <- cspine_ssnal(x_mat, u_mat, alpha = 0.75, nl1 = 100, lambda_factor = 0.1, num_cores = 25)
   tictoc::toc()
-  pcs <- performance(c_result, s, tb_true, mg_true)
-  print(rbind(round(pgs, 3), round(pcs, 3)))
-  reggmm_results[i, ] <- pgs
-  cspine_results[i, ] <- pcs
-  saveRDS(reggmm_results[1:i, ], file.path("out", paste0(setting_str, "-result-RegGMM.rds")))
-  saveRDS(cspine_results[1:i, ], file.path("out", paste0(setting_str, "-result-cspine.rds")))
+  pcs <- performance(c_result$beta_raw, c_result$gamma, true_param$tb, true_param$mg)
+  metric_mat <- rbind(round(pgs, 3), round(pcs, 3))
+  rownames(metric_mat) <- c("RegGMM", "cspine")
+  print(metric_mat)
+  write(paste(pgs, collapse = ","), reggmm_csv, append = TRUE)
+  write(paste(pcs, collapse = ","), cspine_csv, append = TRUE)
 }

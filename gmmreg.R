@@ -35,7 +35,7 @@ predict.gmmreg <- function(fit, newcovar) {
 
 gmmreg <- function(
     responses, covariates, asparse = seq(0.1, 1, by = 0.1),
-    nlambda = 100, lam_max = NULL, lambda_factor = 1e-4,
+    nlambda = 50, lam_max = NULL, lambda_factor = 0.2,
     nfolds = 5, verbose = FALSE, ncores = 1, skip_stage1 = FALSE) {
   stopifnot(
     is.matrix(responses), is.matrix(covariates),
@@ -91,18 +91,11 @@ gmmreg <- function(
   Z <- responses - (g0 + covariates %*% t(ghat_mx))
   intmx <- intxmx(Z, covariates)
 
-  foldid <- sample(cut(seq_len(n), nfolds, labels = FALSE))
-  # foldid <- rep(1:5, each = n / nfolds)
+  foldid <- (seq_len(n) - 1) %% nfolds + 1
   nodewise_beta <- function(node) {
     y <- Z[, node]
     y <- y - mean(y)
     mx <- intmx[, -(seq(0, q) * p + node)]
-    mxs <- as.matrix(mx %*% Matrix::Diagonal(x = 1 / sqrt(Matrix::colSums(mx^2))))
-
-    if (is.null(lam_max)) {
-      lam1_max <- max(abs(crossprod(mxs, y)))
-    }
-    lambda1 <- lam1_max * exp(seq(log(1), log(lambda_factor), length = nlambda))
 
     # There are (q + 1) groups and the size of each group is p-1
     grp_idx <- rep(1:(q + 1), each = p - 1)
@@ -113,11 +106,16 @@ gmmreg <- function(
     pf_group <- c(0, rep(1, q))
 
     for (asid in seq_len(nasparse)) {
+      # Match MATLAB: c1 = lambda1 (direct lasso coef). sparsegl's lasso coef is
+      # asparse * lambda, so lambda = lam1_max / asparse to equate the two scales.
+      lam1_max <- if (is.null(lam_max)) max(abs(crossprod(mx, y))) / n else lam_max
+      lambda1 <- lam1_max / asparse[asid] * exp(seq(log(1), log(lambda_factor), length = nlambda))
       cv_result <- cv.sparsegl(
         mx, y, grp_idx,
         asparse = asparse[asid],
         pf_group = pf_group,
         foldid = foldid,
+        standardize = FALSE,
         lambda = lambda1
       )
       cvm_mx[, asid] <- cv_result$cvm
