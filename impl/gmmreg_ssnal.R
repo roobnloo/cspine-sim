@@ -30,6 +30,8 @@ predict.gmmreg <- function(fit, newcovar) {
 #'   assignment; if FALSE use random assignment
 #' @param verbose print solver progress for the final fit of each node
 #' @param maxit maximum solver iterations
+#' @param mg_oracle optional p x q matrix of true means; if non-NULL, responses
+#'   are centered using this matrix and stage 1 is skipped (oracle estimator)
 #' @param standardize if TRUE (default) standardize each design-matrix column
 #'   to mean zero and unit variance before the nodewise regression, ensuring
 #'   beta coefficients are penalized on the same scale; returned coefficients
@@ -49,7 +51,7 @@ gmmreg_ssnal <- function(
     num_cores = 1L,
     verbose = FALSE,
     maxit = 5000L,
-    skip_stage1 = FALSE,
+    mg_oracle = NULL,
     standardize = TRUE) {
   n <- nrow(responses)
   p <- ncol(responses)
@@ -57,9 +59,11 @@ gmmreg_ssnal <- function(
   dim_coef <- (p - 1L) * (q + 1L)
 
   # Stage 1: estimate mean matrix via nodewise lasso (cv.sparsegl)
-  ghat_mx <- matrix(0, nrow = p, ncol = q)
-
-  if (!skip_stage1) {
+  # If mg_oracle is provided, use it directly (oracle estimator where mg is known)
+  if (!is.null(mg_oracle)) {
+    ghat_mx <- mg_oracle
+  } else {
+    ghat_mx <- matrix(0, nrow = p, ncol = q)
     message("Stage 1: estimating mean matrix...")
     nodewise_gamma <- function(node) {
       result <- cv.sparsegl(

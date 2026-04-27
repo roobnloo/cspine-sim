@@ -1,10 +1,5 @@
 # Usage: Rscript generate-data-simple.R --p=25 --q=50 --nobs=200 --delta=1 [--nrep=100]
 suppressPackageStartupMessages(library(MASS))
-RhpcBLASctl::blas_set_num_threads(1)
-RhpcBLASctl::omp_set_num_threads(1)
-source("impl/cspine_ssnal.R")
-source("impl/gmmreg_ssnal.R")
-source("performance.R")
 
 args <- commandArgs(trailingOnly = TRUE)
 
@@ -28,11 +23,11 @@ true_param <- readRDS(file.path("data", sprintf("coef_p%dq%d.rds", p, q)))
 tb <- true_param$tb
 mg <- true_param$mg
 
-data_dir <- file.path("data", sprintf("p%dq%d-n%d-d%.2f", p, q, nobs, delta))
-dir.create(data_dir, showWarnings = FALSE)
+out_file <- file.path("data", sprintf("p%dq%d-n%d-d%.2f.rds", p, q, nobs, delta))
 
-message(sprintf("Generating %d datasets with p=%d, q=%d, nobs=%d...", nrep, p, q, nobs))
+message(sprintf("Generating %d datasets with p=%d, q=%d, nobs=%d, delta=%.2f...", nrep, p, q, nobs, delta))
 
+datasets <- vector("list", nrep)
 repi <- 0L
 attempt <- 0L
 while (repi < nrep) {
@@ -48,6 +43,8 @@ while (repi < nrep) {
   # X^(i) ~ N(Gamma U^(i), Omega(U^(i))^{-1})
   # tb stores regression betas; Omega = -tB %*% iU
   x_mat <- matrix(0, nobs, p)
+  mu_mat <- matrix(0, nobs, p)
+  omega_arr <- array(0, dim = c(p, p, nobs))
   valid <- TRUE
   for (i in seq_len(nobs)) {
     omega <- -apply(tb, c(1, 2), function(b) b %*% i_u[i, ])
@@ -59,20 +56,14 @@ while (repi < nrep) {
     sigma <- solve(omega)
     mu <- delta * mg %*% u_mat[i, ] + (1 - delta) * sigma %*% mg %*% u_mat[i, ]
     x_mat[i, ] <- mvrnorm(1, mu, sigma)
+    mu_mat[i, ] <- mu
+    omega_arr[, , i] <- omega
   }
   if (!valid) next
 
   repi <- repi + 1L
-  write.table(as.data.frame(x_mat),
-    sep = ",",
-    file.path(data_dir, sprintf("X_%d.csv", repi)),
-    row.names = FALSE, col.names = FALSE
-  )
-  write.table(as.data.frame(u_mat),
-    sep = ",",
-    file.path(data_dir, sprintf("U_%d.csv", repi)),
-    row.names = FALSE, col.names = FALSE
-  )
+  datasets[[repi]] <- list(X = x_mat, U = u_mat, mu = mu_mat, omega = omega_arr)
   message(repi, " ", appendLF = FALSE)
 }
+saveRDS(datasets, out_file)
 message("\nFinished.")

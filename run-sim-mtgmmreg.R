@@ -1,6 +1,5 @@
-# Usage: Rscript run-sim.R --p=25 --q=50 --nobs=200 --delta=1 [--nrep=100]
-source("impl/cspine_ssnal.R")
-source("impl/gmmreg_ssnal.R")
+# Usage: Rscript run-sim-mtgmmreg.R --p=25 --q=50 --nobs=200 --delta=1 [--nrep=100]
+source("impl/mtgmmreg_ssnal.R")
 source("performance.R")
 RhpcBLASctl::omp_set_num_threads(1)
 RhpcBLASctl::blas_set_num_threads(1)
@@ -43,10 +42,8 @@ message("Output directory: ", out_dir)
 
 datasets <- readRDS(file.path("data", sprintf("%s.rds", setting_str)))
 
-reggmm_csv <- file.path(out_dir, "result-RegGMM.csv")
-cspine_csv <- file.path(out_dir, "result-cspine.csv")
-write(paste(metrics, collapse = ","), reggmm_csv)
-write(paste(metrics, collapse = ","), cspine_csv)
+mtgmmreg_csv <- file.path(out_dir, "result-mtRegGMM.csv")
+write(paste(metrics, collapse = ","), mtgmmreg_csv)
 
 for (i in seq_len(nrep)) {
   message("Rep ", i)
@@ -56,24 +53,13 @@ for (i in seq_len(nrep)) {
   omega_true <- datasets[[i]]$omega
   i_u <- cbind(1, u_mat)
   tictoc::tic()
-  g_result <- gmmreg_ssnal(x_mat, u_mat, alpha = 0.75, nl1 = 100, lambda_factor = 0.1, num_cores = 25)
+  mt_result <- mtgmmreg_ssnal(x_mat, u_mat, alpha = 0.75, nl1 = 100, lambda_factor = 0.1, num_cores = 5L)
   tictoc::toc()
-  g_est <- est_omega_mu(g_result$beta, g_result$gamma, i_u, u_mat, p, nobs, "original")
-  pgs <- c(
-    performance(g_result$beta, g_result$gamma, true_param$tb, true_param$mg),
-    performance_supp(g_est$mu, g_est$omega, mu_true, omega_true)
+  mt_est <- est_omega_mu(mt_result$beta, mt_result$gamma, i_u, u_mat, p, nobs, "original")
+  pmt <- c(
+    performance(mt_result$beta, mt_result$gamma, true_param$tb, true_param$mg),
+    performance_supp(mt_est$mu, mt_est$omega, mu_true, omega_true)
   )
-  tictoc::tic()
-  c_result <- cspine_ssnal(x_mat, u_mat, alpha = 0.75, nl1 = 100, lambda_factor = 0.1, num_cores = 25)
-  tictoc::toc()
-  c_est <- est_omega_mu(c_result$beta_raw, c_result$gamma, i_u, u_mat, p, nobs, "natural")
-  pcs <- c(
-    performance(c_result$beta_raw, c_result$gamma, true_param$tb, true_param$mg),
-    performance_supp(c_est$mu, c_est$omega, mu_true, omega_true)
-  )
-  metric_mat <- rbind(round(pgs, 3), round(pcs, 3))
-  rownames(metric_mat) <- c("RegGMM", "cspine")
-  print(metric_mat)
-  write(paste(pgs, collapse = ","), reggmm_csv, append = TRUE)
-  write(paste(pcs, collapse = ","), cspine_csv, append = TRUE)
+  print(round(pmt, 3))
+  write(paste(pmt, collapse = ","), mtgmmreg_csv, append = TRUE)
 }
