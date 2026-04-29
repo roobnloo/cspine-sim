@@ -231,6 +231,7 @@ mtgmmreg_ssnal <- function(
     cv_alpha_idx  = best_k,
     cv_alpha      = alpha_best,
     lambda        = lambda1_seq,
-    alpha         = alpha
+    alpha         = alpha,
+    cvm           = cv_error
   )
 }

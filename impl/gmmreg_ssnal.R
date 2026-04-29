@@ -229,7 +229,8 @@ gmmreg_ssnal <- function(
       cv_lambda     = lambda1_seq[best_i],
       cv_alpha_idx  = best_k,
       cv_alpha      = alpha_best,
-      lambda        = lambda1_seq
+      lambda        = lambda1_seq,
+      cv_error      = cv_error
     )
   }
 
@@ -237,17 +238,20 @@ gmmreg_ssnal <- function(
   rows <- parallel::mclapply(seq_len(p), fit_node, mc.cores = num_cores)
   message("\nFinished regressions.")
 
+  nl2 <- length(alpha)
   cv_lambda_idx <- integer(p)
   cv_lambda <- numeric(p)
   cv_alpha_idx <- integer(p)
   cv_alpha <- numeric(p)
   lambda_path <- matrix(0, nrow = p, ncol = nl1)
+  cvm <- array(0, dim = c(nl1, nl2, p))
   for (j in seq_len(p)) {
     cv_lambda_idx[j] <- rows[[j]]$cv_lambda_idx
     cv_lambda[j] <- rows[[j]]$cv_lambda
     cv_alpha_idx[j] <- rows[[j]]$cv_alpha_idx
     cv_alpha[j] <- rows[[j]]$cv_alpha
     lambda_path[j, ] <- rows[[j]]$lambda
+    cvm[, , j] <- rows[[j]]$cv_error
   }
   beta <- t(do.call(cbind, lapply(rows, `[[`, "x")))
 
@@ -271,6 +275,7 @@ gmmreg_ssnal <- function(
     cv_alpha_idx  = cv_alpha_idx,
     cv_alpha      = cv_alpha,
     lambda        = lambda_path,
-    alpha         = alpha
+    alpha         = alpha,
+    cvm           = cvm
   )
 }

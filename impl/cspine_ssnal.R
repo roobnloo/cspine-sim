@@ -174,7 +174,8 @@ cspine_ssnal <- function(
       cv_lambda     = lambda1_seq[best_i],
       cv_alpha_idx  = best_k,
       cv_alpha      = alpha_best,
-      lambda        = lambda1_seq
+      lambda        = lambda1_seq,
+      cv_error      = cv_error
     )
   }
 
@@ -182,6 +183,7 @@ cspine_ssnal <- function(
   node_fits <- parallel::mclapply(seq_len(p), fit_node, mc.cores = num_cores)
   message("\nFinished regressions.")
 
+  nl2 <- length(alpha)
   ghat_mx <- matrix(0, nrow = p, ncol = q)
   sigma2 <- numeric(p)
   cv_lambda_idx <- integer(p)
@@ -189,6 +191,7 @@ cspine_ssnal <- function(
   cv_alpha_idx <- integer(p)
   cv_alpha <- numeric(p)
   lambda_path <- matrix(0, nrow = p, ncol = nl1)
+  cvm <- array(0, dim = c(nl1, nl2, p))
   BB_raw <- array(0, dim = c(p, p, q + 1L))
   BB_scaled <- array(0, dim = c(p, p, q + 1L))
 
@@ -201,6 +204,7 @@ cspine_ssnal <- function(
     cv_alpha_idx[j] <- fit_j$cv_alpha_idx
     cv_alpha[j] <- fit_j$cv_alpha
     lambda_path[j, ] <- fit_j$lambda
+    cvm[, , j] <- fit_j$cv_error
     beta_j_mx <- matrix(fit_j$beta, nrow = p - 1L, ncol = q + 1L)
     rows_j <- setdiff(seq_len(p), j)
     BB_raw[rows_j, j, ] <- beta_j_mx
@@ -224,6 +228,7 @@ cspine_ssnal <- function(
     cv_alpha_idx = cv_alpha_idx,
     cv_alpha = cv_alpha,
     lambda = lambda_path,
-    alpha = alpha
+    alpha = alpha,
+    cvm = cvm
   )
 }
