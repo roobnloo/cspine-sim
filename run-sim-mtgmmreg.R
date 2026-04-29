@@ -30,7 +30,7 @@ true_param <- tryCatch(
 )
 setting_str <- sprintf("p%dq%d-n%d-d%.2f", p, q, nobs, delta)
 metrics <- c(
-  "tpr", "fpr", "tpr_pop", "fpr_pop", "tpr_cov", "fpr_cov", "beta_err", "gamma_err",
+  "tpr", "fpr", "tpr_pop", "fpr_pop", "tpr_cov", "fpr_cov", "beta_err", "rel_beta_err", "gamma_err",
   "mu_err", "omega_err", "omega_tpr", "omega_fpr"
 )
 

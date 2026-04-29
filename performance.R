@@ -7,7 +7,7 @@ performance <- function(tb_hat, mg_hat, tb_true, mg_true) {
 
   metrics <- c(
     "tpr", "fpr", "tpr_pop", "fpr_pop",
-    "tpr_cov", "fpr_cov", "beta_err", "gamma_err"
+    "tpr_cov", "fpr_cov", "beta_err", "rel_beta_err", "gamma_err"
   )
   stats <- numeric(length(metrics))
   names(stats) <- metrics
@@ -26,6 +26,7 @@ performance <- function(tb_hat, mg_hat, tb_true, mg_true) {
     sum(tb_true[, , -1] == 0)
 
   stats["beta_err"] <- sqrt(sum((tb_hat - tb_true)^2))
+  stats["rel_beta_err"] <- stats["beta_err"] / sqrt(sum(tb_true^2))
   stats["gamma_err"] <- sqrt(sum((mg_hat - mg_true)^2))
 
   stats

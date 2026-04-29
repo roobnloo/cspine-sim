@@ -20,6 +20,8 @@ source("impl/helpers.R")
 #'   to mean zero and unit variance before the nodewise regression, ensuring
 #'   gamma and beta are penalized on the same scale; returned coefficients are
 #'   adjusted back to the original scale (divided by each column's sd)
+#' @param lambda_rule "min" selects the lambda minimizing CV error; "1se"
+#'   selects the largest lambda within one standard error of the minimum
 #' @return list with:
 #'   beta: p x p x (q+1) symmetrized precision-matrix coefficients (-beta_hat/sigma2)
 #'   beta_raw: p x p x (q+1) symmetrized raw regression coefficients
@@ -38,7 +40,9 @@ cspine_ssnal <- function(
     num_cores = 1L,
     verbose = FALSE,
     maxit = 5000L,
-    standardize = TRUE) {
+    standardize = TRUE,
+    lambda_rule = c("min", "1se")) {
+  lambda_rule <- match.arg(lambda_rule)
   n <- nrow(responses)
   p <- ncol(responses)
   q <- ncol(u_cov)
@@ -87,7 +91,7 @@ cspine_ssnal <- function(
     lambda1_seq <- lam1_max *
       exp(seq(log(1), log(lambda_factor), length.out = nl1))
 
-    cv_error <- matrix(0, nrow = nl1, ncol = length(alpha))
+    cv_error_folds <- array(0, dim = c(nl1, length(alpha), nfolds))
     for (fold in seq_len(nfolds)) {
       train_idx <- which(fold_id != fold)
       test_idx <- which(fold_id == fold)
@@ -132,12 +136,25 @@ cspine_ssnal <- function(
           warm_y <- result$y
           warm_z <- result$z
           res <- a_test %*% result$x - b_test
-          cv_error[i, k] <- cv_error[i, k] + sum(res^2)
+          cv_error_folds[i, k, fold] <- sum(res^2) / length(test_idx)
         }
       }
     }
 
-    best_ij <- which(cv_error == min(cv_error), arr.ind = TRUE)[1L, , drop = FALSE]
+    cv_error <- apply(cv_error_folds, c(1L, 2L), mean)
+    if (lambda_rule == "min") {
+      best_ij <- which(cv_error == min(cv_error), arr.ind = TRUE)[1L, , drop = FALSE]
+    } else {
+      min_val <- min(cv_error)
+      best_min_ij <- which(cv_error == min_val, arr.ind = TRUE)[1L, ]
+      se_min <- apply(cv_error_folds, c(1L, 2L), sd)[best_min_ij[1L], best_min_ij[2L]] /
+        sqrt(nfolds)
+      # Among all (lambda, alpha) within 1 SE, pick largest lambda (smallest index
+      # in the decreasing lambda sequence)
+      candidates <- which(cv_error <= min_val + se_min, arr.ind = TRUE)
+      candidates <- candidates[order(candidates[, 1L]), , drop = FALSE]
+      best_ij <- candidates[1L, , drop = FALSE]
+    }
     best_i <- best_ij[1L]
     best_k <- best_ij[2L]
     alpha_best <- alpha[best_k]
