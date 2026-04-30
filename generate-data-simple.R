@@ -54,7 +54,7 @@ while (repi < nrep) {
       break
     }
     sigma <- solve(omega)
-    mu <- delta * mg %*% u_mat[i, ] + (1 - delta) * sigma %*% mg %*% u_mat[i, ]
+    mu <- (1 - delta) * mg %*% u_mat[i, ] + delta * sigma %*% mg %*% u_mat[i, ]
     x_mat[i, ] <- mvrnorm(1, mu, sigma)
     mu_mat[i, ] <- mu
     omega_arr[, , i] <- omega
