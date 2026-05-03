@@ -20,11 +20,11 @@ tibble(
   )
 ggsave("s_beta_err.pdf")
 
-c_results_g <- readRDS("out/p25q10-n300-natural-varying-sparsity-result-gamma-cspine.rds")
-g_results_g <- readRDS("out/p25q10-n300-natural-varying-sparsity-result-gamma-RegGMM.rds")
+c_results_g <- read_csv("out/p25q10-n300-natural-varying-sparsity-gamma/result-cspine.csv")
+g_results_g <- read_csv("out/p25q10-n300-natural-varying-sparsity-gamma/result-RegGMM.csv")
 tibble(
-  s_gamma = c_results_g[, "s_gamma"],
-  err = c_results_g[, "beta_err"] + c_results_g[, "gamma_err"]
+  s_gamma = c_results_g$s_gamma,
+  err = c_results_g$beta_err + c_results_g$gamma_err
 ) |>
   ggplot(mapping = aes(x = s_gamma, y = err)) +
   geom_point(alpha = 0.8, shape = 4, color = swatch()[3], size = 7) +
@@ -59,9 +59,9 @@ c_results_g <- readRDS("out/p25q50-n300-original-varying-sparsity-result-gamma-c
 g_results_g <- readRDS("out/p25q50-n300-original-varying-sparsity-result-gamma-RegGMM.rds")
 ggthemr::ggthemr("fresh")
 tibble(
-  q = c(c_results_g[, "s_gamma"], g_results_g[, "s_gamma"]),
-  err = c(c_results_g[, "beta_err"], g_results_g[, "beta_err"]),
-  tpr = c(c_results_g[, "tpr"], g_results_g[, "tpr"]),
+  q = c(c_results_g$s_gamma, g_results_g$s_gamma),
+  err = c(c_results_g$beta_err, g_results_g$beta_err),
+  tpr = c(c_results_g$tpr, g_results_g$tpr),
   method = rep(c("cspine", "RegGMM"), each = nrow(c_results_g))
 ) |>
   ggplot(mapping = aes(x = q, y = err, color = method, shape = method)) +

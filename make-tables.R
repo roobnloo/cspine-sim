@@ -16,7 +16,7 @@ rows_sd <- list()
 
 for (d in dirs) {
   params <- tryCatch(parse_dir_name(basename(d)), error = function(e) NULL)
-  if (is.null(params)) next
+  if (is.null(params) || is.na(params$d)) next
   if (abs(params$d - target_d) > 1e-9) next
 
   method_files <- list.files(d, pattern = "^result-.*\\.csv$", full.names = FALSE)
@@ -34,10 +34,12 @@ for (d in dirs) {
 }
 
 mean_df <- bind_rows(rows_mean) |>
+  # filter(n == 400) |>
   select(p, q, n, d, method, everything()) |>
   arrange(p, q, n, d, method)
 
 sd_df <- bind_rows(rows_sd) |>
+  # filter(n == 400) |>
   select(p, q, n, d, method, everything()) |>
   arrange(p, q, n, d, method)
 

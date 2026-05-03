@@ -1,4 +1,4 @@
-# Usage: Rscript run-sim.R --p=25 --q=50 --nobs=200 --delta=1 [--nrep=100]
+# Usage: Rscript run-sim.R --p=25 --q=50 --nobs=200 --delta=1 [--nrep=100] [--start_id=1]
 source("impl/cspine_ssnal.R")
 source("impl/gmmreg_ssnal.R")
 source("performance.R")
@@ -18,6 +18,7 @@ q <- as.integer(parse_arg(args, "q"))
 nobs <- as.integer(parse_arg(args, "nobs"))
 delta <- as.numeric(parse_arg(args, "delta"))
 nrep <- as.integer(parse_arg(args, "nrep", default = 100))
+start_id <- as.integer(parse_arg(args, "start_id", default = 1))
 for (req in c("p", "q", "nobs", "delta")) {
   if (is.na(get(req))) stop("Required argument missing: --", req)
 }
@@ -38,17 +39,22 @@ metrics <- c(
 out_dir <- file.path("out", setting_str)
 dir.create(out_dir, showWarnings = FALSE)
 
-message(sprintf("Settings: p=%d, q=%d, nobs=%d, delta=%.2f, nrep=%d", p, q, nobs, delta, nrep))
+message(sprintf("Settings: p=%d, q=%d, nobs=%d, delta=%.2f, nrep=%d, start_id=%d", p, q, nobs, delta, nrep, start_id))
 message("Output directory: ", out_dir)
 
 datasets <- readRDS(file.path("data", sprintf("%s.rds", setting_str)))
 
 reggmm_csv <- file.path(out_dir, "result-RegGMM.csv")
 cspine_csv <- file.path(out_dir, "result-cspine.csv")
-write(paste(metrics, collapse = ","), reggmm_csv)
-write(paste(metrics, collapse = ","), cspine_csv)
+if (start_id == 1) {
+  write(paste(metrics, collapse = ","), reggmm_csv)
+  write(paste(metrics, collapse = ","), cspine_csv)
+} else {
+  if (!file.exists(reggmm_csv)) stop("--start_id != 1 but output CSV does not exist: ", reggmm_csv)
+  if (!file.exists(cspine_csv)) stop("--start_id != 1 but output CSV does not exist: ", cspine_csv)
+}
 
-for (i in seq_len(nrep)) {
+for (i in seq(start_id, nrep)) {
   message("Rep ", i)
   x_mat <- datasets[[i]]$X
   u_mat <- datasets[[i]]$U
