@@ -105,11 +105,11 @@ make_table_d1 <- function() {
   )
   latex_code <- paste0(latex_code, "  \\hline\n")
 
-  n_prev <- NA
   for (s in seq_len(nrow(settings))) {
     sp <- settings$p[s]
     sq <- settings$q[s]
     sn <- settings$n[s]
+    next_n <- if (s < nrow(settings)) settings$n[s + 1] else NA
 
     setting_methods <- mean_df |>
       filter(p == sp, q == sq, n == sn) |>
@@ -128,13 +128,8 @@ make_table_d1 <- function() {
       sr <- sd_df |> filter(p == sp, q == sq, n == sn, method == m)
 
       prefix <- if (mi == 1) {
-        n_str <- if (is.na(n_prev) || sn != n_prev) {
-          n_prev <<- sn
-          as.character(sn)
-        } else {
-          ""
-        }
-        paste0(n_str, " & (", sp, ", ", sq, ")")
+        n_str <- if (is.na(next_n) || next_n != sn) as.character(sn) else ""
+        paste0(n_str, " & \\multirow{", num_active, "}{*}{$(", sp, ", ", sq, ")$}")
       } else {
         " & "
       }
@@ -154,11 +149,12 @@ make_table_d1 <- function() {
       )
     }
 
-    method_lines <- embolden(method_lines, metric_vals, bold_dirs,
-      embolden_methods = setdiff(active_methods, "RegGMM-oracle")
-    )
+    # method_lines <- embolden(method_lines, metric_vals, bold_dirs,
+    #   embolden_methods = setdiff(active_methods, "RegGMM-oracle")
+    # )
     latex_code <- paste0(latex_code, paste0(method_lines, collapse = ""))
-    latex_code <- paste0(latex_code, "  \\hline\n")
+    hline_str <- if (!is.na(next_n) && next_n == sn) "  \\cline{2-7}\n" else "  \\hline\n"
+    latex_code <- paste0(latex_code, hline_str)
   }
 
   latex_code <- paste0(latex_code, "\\end{tabular}\n")
