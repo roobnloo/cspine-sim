@@ -36,8 +36,8 @@ while (repi < nrep) {
 
   u_mat <- matrix(sample(c(0L, 1L), nobs * q, replace = TRUE), nobs, q)
   cont_idx <- sample(seq_len(q), q / 2, replace = FALSE)
-  u_mat[, cont_idx] <- matrix(runif(nobs * q / 2), nobs, q / 2)
-  u_mat <- apply(u_mat, 2, scale)
+  u_mat[, cont_idx] <- apply(matrix(runif(nobs * q / 2), nobs, q / 2), 2, scale)
+  # u_mat <- apply(u_mat, 2, scale)
   i_u <- cbind(1, u_mat)
 
   # X^(i) ~ N(Gamma U^(i), Omega(U^(i))^{-1})
