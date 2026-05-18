@@ -2,8 +2,10 @@
 # Runs oracle RegGMM only (delta=1, true mg supplied via mg_oracle)
 source("impl/gmmreg_ssnal.R")
 source("performance.R")
-RhpcBLASctl::omp_set_num_threads(1)
-RhpcBLASctl::blas_set_num_threads(1)
+if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
+  RhpcBLASctl::omp_set_num_threads(1)
+  RhpcBLASctl::blas_set_num_threads(1)
+}
 
 args <- commandArgs(trailingOnly = TRUE)
 

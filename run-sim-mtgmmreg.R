@@ -1,8 +1,10 @@
 # Usage: Rscript run-sim-mtgmmreg.R --p=25 --q=50 --nobs=200 --delta=1 [--nrep=100] [--start_id=1]
 source("impl/mtgmmreg_ssnal.R")
 source("performance.R")
-RhpcBLASctl::omp_set_num_threads(1)
-RhpcBLASctl::blas_set_num_threads(1)
+if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
+  RhpcBLASctl::omp_set_num_threads(1)
+  RhpcBLASctl::blas_set_num_threads(1)
+}
 
 args <- commandArgs(trailingOnly = TRUE)
 
