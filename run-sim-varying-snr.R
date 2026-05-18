@@ -1,43 +1,112 @@
-library(cspine)
+# Usage: Rscript run-sim-varying-snr.R --p=25 --q=50 --nobs=200 --c=1 [--nrep=50] [--start_id=1]
+source("impl/cspine_ssnal.R")
+source("impl/gmmreg_ssnal.R")
 source("performance.R")
-source("gmmreg.R")
+if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
+  RhpcBLASctl::omp_set_num_threads(1)
+  RhpcBLASctl::blas_set_num_threads(1)
+}
 
-set.seed(145461)
+args <- commandArgs(trailingOnly = TRUE)
 
-p <- 25
-q <- 50
-n <- 200
-model <- "original"
+parse_arg <- function(args, key, default = NULL) {
+  pat <- paste0("^--", key, "=(.+)$")
+  m <- regmatches(args, regexpr(pat, args, perl = TRUE))
+  if (length(m) == 0L) default else sub(pat, "\\1", m)
+}
 
-all_data <- readRDS(sprintf("data/p%dq%d-n%d-%s-varying-snr.rds", p, q, n, model))
+p <- as.integer(parse_arg(args, "p"))
+q <- as.integer(parse_arg(args, "q"))
+nobs <- as.integer(parse_arg(args, "nobs"))
+c_val <- as.numeric(parse_arg(args, "c"))
+nrep <- as.integer(parse_arg(args, "nrep", default = 50))
+start_id <- as.integer(parse_arg(args, "start_id", default = 1))
+for (req in c("p", "q", "nobs", "c_val")) {
+  if (is.na(get(req))) stop("Required argument missing: --", sub("_val", "", req))
+}
 
-nrep <- length(all_data)
+# ---- Load true parameters (fixed Gamma and B_h) ----
+true_param_path <- file.path("data", sprintf("coef_p%dq%d.rds", p, q))
+if (!file.exists(true_param_path)) stop("True parameter file not found: ", true_param_path)
+true_param <- readRDS(true_param_path)
+tb <- true_param$tb # p × p × (q+1)
+mg <- true_param$mg # p × q
+
+# Pre-compute vectorized Omega pieces for computing omega_true on-the-fly
+Bmat <- matrix(tb[, , 2:(q + 1)], p * p, q)
+B0_vec <- as.vector(tb[, , 1])
+diag_idx <- seq(1L, p * p, by = p + 1L)
+
+# ---- Load data ----
+c_str <- gsub("\\.", "p", as.character(c_val))
+data_file <- file.path("data", sprintf("p%dq%d-n%d-varying-snr-c%s.rds", p, q, nobs, c_str))
+if (!file.exists(data_file)) stop("Data file not found: ", data_file)
+all_data <- readRDS(data_file)
+nrep <- min(nrep, length(all_data))
+
+# ---- Output setup ----
 metrics <- c(
-  "tpr", "fpr", "tpr_pop", "fpr_pop", "tpr_cov", "fpr_cov",
-  "beta_err", "omega_err", "gamma_err", "mean_err", "omega_tpr", "omega_fpr", "snr"
+  "tpr", "fpr", "tpr_pop", "fpr_pop", "tpr_cov", "fpr_cov", "beta_err", "rel_beta_err",
+  "gamma_err", "mu_err", "omega_err", "omega_tpr", "omega_fpr", "snr"
 )
-c_perf <- matrix(nrow = nrep, ncol = length(metrics), dimnames = list(NULL, metrics))
-g_perf <- matrix(nrow = nrep, ncol = length(metrics), dimnames = list(NULL, metrics))
-dir.create("./out", showWarnings = FALSE)
-outpath <- file.path("out", sprintf("p%dq%d-n%d-%s-varying-snr-result", p, q, n, model))
+setting_str <- sprintf("p%dq%d-n%d-varying-snr-c%s", p, q, nobs, c_str)
+out_dir <- file.path("out", setting_str)
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
-for (i in seq_len(nrep)) {
+message(sprintf(
+  "Settings: p=%d, q=%d, nobs=%d, c=%.2f, nrep=%d, start_id=%d",
+  p, q, nobs, c_val, nrep, start_id
+))
+message("Output directory: ", out_dir)
+
+reggmm_csv <- file.path(out_dir, "result-RegGMM.csv")
+cspine_csv <- file.path(out_dir, "result-cspine.csv")
+if (start_id == 1L) {
+  write(paste(metrics, collapse = ","), reggmm_csv)
+  write(paste(metrics, collapse = ","), cspine_csv)
+} else {
+  if (!file.exists(reggmm_csv)) stop("--start_id != 1 but output CSV does not exist: ", reggmm_csv)
+  if (!file.exists(cspine_csv)) stop("--start_id != 1 but output CSV does not exist: ", cspine_csv)
+}
+
+# ---- Main loop ----
+for (i in seq(start_id, nrep)) {
   message("Rep ", i)
   s <- all_data[[i]]
-  snr <- mean(s$snr)
-  tictoc::tic()
-  g_result <- gmmreg(s$X, s$U, ncores = 13)
-  tictoc::toc()
-  pgs <- performance(g_result, s, s$tb, s$mg)
-  g_perf[i, ] <- c(pgs, snr)
-  saveRDS(g_perf[1:i, ], paste0(outpath, "-RegGMM.rds"))
+  x_mat <- s$X
+  u_mat <- s$U # already scaled by c
+  i_u <- cbind(1, u_mat)
+  snr <- s$snr
+
+  # Compute true mu and omega from fixed params and scaled U
+  mu_true <- t(mg %*% t(u_mat)) # n × p
+  ov <- B0_vec + Bmat %*% t(u_mat) # (p^2) × n
+  ov[diag_idx, ] <- 1
+  omega_true <- array(ov, dim = c(p, p, nobs)) # p × p × n
 
   tictoc::tic()
-  c_result <- cspine(s$X, s$U, ncores = 13)
+  g_result <- gmmreg_ssnal(x_mat, u_mat, alpha = 0.75, nl1 = 100, lambda_factor = 0.1, num_cores = 25)
   tictoc::toc()
-  pcs <- performance(c_result, s, s$tb, s$mg)
-  c_perf[i, ] <- c(pcs, snr)
-  saveRDS(c_perf[1:i, ], paste0(outpath, "-cspine.rds"))
+  g_est <- est_omega_mu(g_result$beta, g_result$gamma, i_u, u_mat, p, nobs, "original")
+  pgs <- c(
+    performance(g_result$beta, g_result$gamma, tb, mg),
+    performance_supp(g_est$mu, g_est$omega, mu_true, omega_true),
+    snr
+  )
 
-  print(rbind(round(g_perf[i, ], 3), round(c_perf[i, ], 3)))
+  tictoc::tic()
+  c_result <- cspine_ssnal(x_mat, u_mat, alpha = 0.75, nl1 = 100, lambda_factor = 0.1, num_cores = 25)
+  tictoc::toc()
+  c_est <- est_omega_mu(c_result$beta_raw, c_result$gamma, i_u, u_mat, p, nobs, "natural")
+  pcs <- c(
+    performance(c_result$beta_raw, c_result$gamma, tb, mg),
+    performance_supp(c_est$mu, c_est$omega, mu_true, omega_true),
+    snr
+  )
+
+  metric_mat <- rbind(round(pgs, 3), round(pcs, 3))
+  rownames(metric_mat) <- c("RegGMM", "cspine")
+  print(metric_mat)
+  write(paste(pgs, collapse = ","), reggmm_csv, append = TRUE)
+  write(paste(pcs, collapse = ","), cspine_csv, append = TRUE)
 }
