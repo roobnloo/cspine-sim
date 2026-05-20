@@ -5,7 +5,7 @@ p <- 25L
 q <- 50L
 n <- 200L
 n_rep <- 50L
-c_vals <- c(0.25, 0.5, 0.75, 1, 1.25, 1.5)
+c_vals <- c(0.29, 0.41, 0.59, 0.87, 1.35)
 pd_tol <- 1e-6
 pd_fail_thresh <- 0.01
 master_seed <- 8472L
