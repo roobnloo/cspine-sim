@@ -4,8 +4,8 @@ suppressPackageStartupMessages(library(MASS))
 p <- 25L
 q <- 50L
 n <- 200L
-n_rep <- 50L
-c_vals <- c(0.29, 0.41, 0.59, 0.87, 1.35)
+n_rep <- 100L
+c_vals <- round(sqrt(seq(0.025, 0.125, 0.025) / 0.083), 2)
 pd_tol <- 1e-6
 pd_fail_thresh <- 0.01
 master_seed <- 8472L
@@ -34,12 +34,12 @@ gen_replicate <- function(c_val, seed) {
 
   U <- matrix(0, n, q)
   U[, seq_len(q / 2)] <- matrix(sample(0:1, n * (q / 2), replace = TRUE), n, q / 2)
-  U[, seq(q / 2 + 1L, q)] <- matrix(runif(n * (q / 2)), n, q / 2)
+  U[, seq(q / 2 + 1L, q)] <- apply(matrix(runif(n * (q / 2)), n, q / 2), 2, scale)
   U_scaled <- c_val * U
 
   # Vectorized Omega construction
   contrib <- Bmat %*% t(U_scaled) # (p^2) x n
-  omega_vecs <- B0_vec + contrib # (p^2) x n
+  omega_vecs <- -(B0_vec + contrib) # (p^2) x n
   omega_vecs[diag_idx, ] <- 1 # set diagonal = 1
 
   pd_fail <- logical(n)
@@ -82,6 +82,7 @@ gen_replicate <- function(c_val, seed) {
 # ---- Main loop ----
 dir.create("data", showWarnings = FALSE)
 
+avg_snrs <- numeric(length(c_vals))
 for (ci in seq_along(c_vals)) {
   c_val <- c_vals[ci]
   message(sprintf("\n--- c = %.2f ---", c_val))
@@ -103,6 +104,9 @@ for (ci in seq_along(c_vals)) {
   }
 
   if (!skipped) {
+    avg_snr <- mean(sapply(reps, `[[`, "snr"))
+    avg_snrs[ci] <- avg_snr
+    message(sprintf("  avg snr = %.4f", avg_snr))
     c_str <- gsub("\\.", "p", as.character(c_val))
     outpath <- file.path("data", sprintf("p%dq%d-n%d-varying-snr-c%s.rds", p, q, n, c_str))
     saveRDS(reps, outpath)
