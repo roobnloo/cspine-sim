@@ -1,181 +1,85 @@
 suppressPackageStartupMessages(library(ggplot2))
 suppressPackageStartupMessages(library(tibble))
 
-performance <- function(fit, s, tb_true, mg_true, simple = FALSE) {
-  stopifnot(all(dim(fit$beta) == dim(tb_true)))
-  p <- dim(tb_true)[1]
-  n <- nrow(s$X)
+performance <- function(tb_hat, mg_hat, tb_true, mg_true) {
+  stopifnot(all(dim(tb_hat) == dim(tb_true)))
+  stopifnot(all(dim(mg_hat) == dim(mg_true)))
+
   metrics <- c(
-    "tpr", "fpr", "tpr_pop", "fpr_pop", "tpr_cov", "fpr_cov",
-    "beta_err", "omega_err", "gamma_err", "mean_err", "omega_tpr", "omega_fpr"
+    "tpr", "fpr", "tpr_pop", "fpr_pop",
+    "tpr_cov", "fpr_cov", "beta_err", "rel_beta_err", "gamma_err"
   )
   stats <- numeric(length(metrics))
   names(stats) <- metrics
-  stats["tpr"] <- sum(fit$beta != 0 & tb_true != 0) / sum(tb_true != 0)
-  stats["fpr"] <- sum(fit$beta != 0 & tb_true == 0) / sum(tb_true == 0)
 
-  stats["tpr_pop"] <- sum(fit$beta[, , 1] != 0 & tb_true[, , 1] != 0) / sum(tb_true[, , 1] != 0)
-  stats["fpr_pop"] <- sum(fit$beta[, , 1] != 0 & tb_true[, , 1] == 0) / sum(tb_true[, , 1] == 0)
+  stats["tpr"] <- sum(tb_hat != 0 & tb_true != 0) / sum(tb_true != 0)
+  stats["fpr"] <- sum(tb_hat != 0 & tb_true == 0) / sum(tb_true == 0)
 
-  stats["tpr_cov"] <- sum(fit$beta[, , -1] != 0 & tb_true[, , -1] != 0) / sum(tb_true[, , -1] != 0)
-  stats["fpr_cov"] <- sum(fit$beta[, , -1] != 0 & tb_true[, , -1] == 0) / sum(tb_true[, , -1] == 0)
+  stats["tpr_pop"] <- sum(tb_hat[, , 1] != 0 & tb_true[, , 1] != 0) /
+    sum(tb_true[, , 1] != 0)
+  stats["fpr_pop"] <- sum(tb_hat[, , 1] != 0 & tb_true[, , 1] == 0) /
+    sum(tb_true[, , 1] == 0)
 
-  beta_err <- 0
-  gamma_err <- 0
-  for (i in 1:p) {
-    beta_err <- beta_err + sqrt(sum((tb_true[i, -i, ] + fit$beta_raw[i, -i, ])^2))
-    gamma_err <- gamma_err + sqrt(sum((mg_true[i, ] - fit$gamma[i, ])^2))
-  }
-  stats["beta_err"] <- beta_err
+  stats["tpr_cov"] <- sum(tb_hat[, , -1] != 0 & tb_true[, , -1] != 0) /
+    sum(tb_true[, , -1] != 0)
+  stats["fpr_cov"] <- sum(tb_hat[, , -1] != 0 & tb_true[, , -1] == 0) /
+    sum(tb_true[, , -1] == 0)
 
-  if (simple) {
-    # Only return TPR, FPR, and beta_err
-    return(stats[c("tpr", "fpr", "tpr_pop", "fpr_pop", "tpr_cov", "fpr_cov", "beta_err")])
-  }
+  stats["beta_err"] <- sqrt(sum((tb_hat - tb_true)^2))
+  stats["rel_beta_err"] <- stats["beta_err"] / sqrt(sum(tb_true^2))
+  stats["gamma_err"] <- sqrt(sum((mg_hat - mg_true)^2))
 
-  stats["gamma_err"] <- gamma_err
-
-  omega_err <- 0
-  mean_err <- 0
-  omega_tpr <- 0
-  omega_fpr <- 0
-  iu <- cbind(1, s$U)
-
-  for (i in 1:n) {
-    omega <- apply(tb_true, c(1, 2), \(b) b %*% iu[i, ])
-    diag(omega) <- 0
-
-    p <- predict(fit, s$U[i, ])
-    omhat <- p$precision
-    diag(omhat) <- 0
-    omega_err <- omega_err + sum((omega - omhat)^2) / n
-    mean_err <- mean_err + sum((s$mumx[i, ] - p$mean)^2) / n
-    omega_tpr <- omega_tpr + sum(omhat != 0 & omega != 0) / sum(omega != 0)
-    omega_fpr <- omega_fpr + sum(omhat != 0 & omega == 0) / sum(omega == 0)
-  }
-  omega_tpr <- omega_tpr / n
-  omega_fpr <- omega_fpr / n
-  stats["omega_err"] <- omega_err
-  stats["mean_err"] <- mean_err
-  stats["omega_tpr"] <- omega_tpr
-  stats["omega_fpr"] <- omega_fpr
-
-  return(stats)
+  stats
 }
 
-beta_viz <- function(beta_mx, title = "", limits = NULL, guides = T,
-                     tileborder = T, fill_legend = T) {
-  d <- nrow(beta_mx)
-  beta0 <- as_tibble(cbind(
-    expand.grid(rev(seq_len(d)), seq_len(d)),
-    c(beta_mx)
-  )) |>
-    setNames(c("row", "col", "value"))
+performance_supp <- function(mu_hat, omega_hat, mu_true, omega_true) {
+  mu_err <- sqrt(mean((mu_hat - mu_true)^2))
+  omega_err <- sqrt(mean((omega_hat - omega_true)^2))
 
-  tilecolor <- ifelse(tileborder, "gray30", "white")
-  p <- ggplot(beta0, mapping = aes(x = col, y = row, fill = value)) +
-    geom_tile() +
-    scale_fill_gradient2(limits = limits) +
-    coord_fixed() +
-    labs(title = title) +
-    theme_minimal()
-  if (!fill_legend) {
-    p <- p + guides(fill = "none")
-  } else if (!guides) {
-    p <- p + guides(x = "none", y = "none", fill = "none") +
-      labs(x = NULL, y = NULL)
-  }
+  p <- dim(omega_hat)[1]
+  nobs <- dim(omega_hat)[3]
+  off_diag <- !diag(p)
 
-  return(p)
-}
+  tpr_fpr <- vapply(seq_len(nobs), function(k) {
+    true_pos <- omega_true[, , k][off_diag] != 0
+    hat_pos <- omega_hat[, , k][off_diag] != 0
+    c(
+      sum(hat_pos & true_pos) / max(sum(true_pos), 1L),
+      sum(hat_pos & !true_pos) / max(sum(!true_pos), 1L)
+    )
+  }, numeric(2))
 
-beta_viz_compare <- function(computed, actual, cov_lbl, guides = T,
-                             tileborder = T) {
-  lim <- max(abs(c(as.numeric(computed), as.numeric(actual))))
-  comp <- beta_viz(computed,
-    title = paste("Estimated", cov_lbl),
-    limits = c(-lim, lim),
-    guides = guides,
-    tileborder = tileborder,
-    fill_legend = F
+  c(
+    mu_err = mu_err, omega_err = omega_err,
+    tpr = mean(tpr_fpr[1, ]), fpr = mean(tpr_fpr[2, ])
   )
-  act <- beta_viz(actual,
-    title = paste("True", cov_lbl),
-    limits = c(-lim, lim),
-    guides = guides,
-    tileborder = tileborder
-  )
-  comp + act
 }
 
-beta_viz_list <- function(beta_list, cov_lbl = "", guides = T, tileborder = T) {
-  lim <- max(abs(unlist(beta_list)))
+est_omega_mu <- function(beta, gamma, i_u, u_mat, p, nobs, method = c("original", "natural")) {
+  method <- match.arg(method)
+  beta_mat <- matrix(beta, nrow = p * p, ncol = ncol(i_u))
+  omega_hat <- array(-(beta_mat %*% t(i_u)), dim = c(p, p, nobs))
 
-  plots <- vector(mode = "list", length = length(beta_list))
-  for (i in seq_along(beta_list)) {
-    plots[[i]] <- beta_viz(beta_list[[i]],
-      title = paste(names(beta_list)[i], cov_lbl),
-      limits = c(-lim, lim),
-      tileborder = tileborder
-    ) +
-      guides(x = "none", y = "none") +
-      labs(x = NULL, y = NULL)
-    if (i != length(beta_list)) {
-      plots[[i]] <- plots[[i]] + guides(fill = "none")
+  diag_idx <- cbind(rep(seq_len(p), nobs), rep(seq_len(p), nobs), rep(seq_len(nobs), each = p))
+  omega_hat[diag_idx] <- 1
+
+  min_eigs <- apply(omega_hat, 3, function(om) {
+    min(eigen(om, symmetric = TRUE, only.values = TRUE)$values)
+  })
+  for (k in which(min_eigs <= 0)) {
+    om <- omega_hat[, , k]
+    inflate <- 1e-6
+    while (min(eigen(om, symmetric = TRUE, only.values = TRUE)$values) <= 0) {
+      diag(om) <- diag(om) + inflate
+      inflate <- inflate * 10
     }
+    omega_hat[, , k] <- om
   }
 
-  Reduce(`+`, plots)
-}
-
-cv_result_plot <- function(fit) {
-  for (node in 1:25) {
-    par(mfrow = c(3, 3))
-    for (i in 1:9) {
-      plot(fit$cvm[, i, node])
-    }
+  mu_hat <- gamma %*% t(u_mat)
+  if (method == "natural") {
+    mu_hat <- vapply(seq_len(nobs), function(k) solve(omega_hat[, , k], mu_hat[, k]), numeric(p))
   }
-}
 
-gamma_viz <- function(gamma_mx, title = "", limits = NULL) {
-  d <- nrow(gamma_mx)
-  p <- ncol(gamma_mx)
-  gamma_tbl <- as_tibble(cbind(
-    expand.grid(rev(seq_len(d)), seq_len(p)),
-    c(gamma_mx)
-  )) |>
-    setNames(c("row", "col", "value"))
-
-  ggplot(gamma_tbl, mapping = aes(x = col, y = row, fill = value)) +
-    # geom_tile(color = "gray30") +
-    geom_tile() +
-    scale_fill_gradient2(limits = limits) +
-    coord_fixed() +
-    labs(title = title) +
-    theme_minimal()
-}
-
-gamma_viz_compare <- function(computed, actual) {
-  lim <- max(abs(c(as.numeric(computed), as.numeric(actual))))
-  computed_plot <- gamma_viz(computed, "Computed gamma", c(-lim, lim)) +
-    guides(fill = "none")
-  actual_plot <- gamma_viz(actual, "Actual gamma", c(-lim, lim))
-  computed_plot + actual_plot
-}
-
-gamma_viz_list <- function(gamma_list) {
-  lim <- max(abs(unlist(gamma_list)))
-  plots <- vector(mode = "list", length = length(gamma_list))
-  for (i in seq_along(gamma_list)) {
-    plots[[i]] <- gamma_viz(
-      gamma_list[[i]],
-      paste(names(gamma_list)[i], "gamma"), c(-lim, lim)
-    ) +
-      labs(x = NULL, y = NULL) +
-      guides(x = "none", y = "none")
-    if (i != length(gamma_list)) {
-      plots[[i]] <- plots[[i]] + guides(fill = "none")
-    }
-  }
-  Reduce(`+`, plots) + plot_layout(ncol = 1)
+  list(omega = omega_hat, mu = t(mu_hat))
 }

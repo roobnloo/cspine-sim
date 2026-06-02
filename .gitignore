@@ -1,7 +1,11 @@
 scratch/
 out/
-data/
+data/*
 .lintr
 *.code-workspace
 *.rds
 *.pdf
+slurm-*.out
+*.job
+!data/coef_p25q50.rds
+!data/coef_p25q100.rds

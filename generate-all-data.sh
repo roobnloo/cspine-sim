@@ -1,11 +1,22 @@
 #! /bin/bash
 
-Rscript generate-data.R 25 50 200 original 101
-Rscript generate-data.R 25 100 200 original 444
-Rscript generate-data.R 25 50 400 original 1010
-Rscript generate-data.R 25 100 400 original 4440
-Rscript generate-data.R 25 50 200 natural 233
-Rscript generate-data.R 25 100 200 natural 1341
-Rscript generate-data.R 25 50 400 natural 2330
-Rscript generate-data.R 25 100 400 natural 13410
-Rscript generate-data-varying-sparsity.R
+# By default, the p=25, q=50, n=200 settings are generated.
+# For additional results, uncomment the desired setting.
+
+# p=25, q=50
+Rscript generate-data-simple.R --p=25 --q=50 --nobs=200 --delta=0
+# Rscript generate-data-simple.R --p=25 --q=50 --nobs=200 --delta=0.25
+# Rscript generate-data-simple.R --p=25 --q=50 --nobs=200 --delta=0.5
+# Rscript generate-data-simple.R --p=25 --q=50 --nobs=200 --delta=0.75
+Rscript generate-data-simple.R --p=25 --q=50 --nobs=200 --delta=1
+# Rscript generate-data-simple.R --p=25 --q=50 --nobs=400 --delta=0
+# Rscript generate-data-simple.R --p=25 --q=50 --nobs=400 --delta=1
+
+# p=25, q=100
+# Rscript generate-data-simple.R --p=25 --q=100 --nobs=200 --delta=0
+# Rscript generate-data-simple.R --p=25 --q=100 --nobs=200 --delta=1
+# Rscript generate-data-simple.R --p=25 --q=100 --nobs=400 --delta=0
+# Rscript generate-data-simple.R --p=25 --q=100 --nobs=400 --delta=1
+
+# varying SNR
+# Rscript generate-data-varying-snr.R

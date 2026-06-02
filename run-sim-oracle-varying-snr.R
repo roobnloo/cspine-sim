@@ -1,5 +1,5 @@
-# Usage: Rscript run-sim-varying-snr.R --p=25 --q=50 --nobs=200 --c=0.29 [--nrep=50] [--start_id=1]
-source("impl/cspine_ssnal.R")
+# Usage: Rscript run-sim-oracle-varying-snr.R --p=25 --q=50 --nobs=200 --c=0.29 [--nrep=50] [--start_id=1]
+# Runs oracle RegGMM only (delta=1, true mg supplied via mg_oracle)
 source("impl/gmmreg_ssnal.R")
 source("performance.R")
 if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
@@ -54,19 +54,16 @@ out_dir <- file.path("out", setting_str)
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 message(sprintf(
-  "Settings: p=%d, q=%d, nobs=%d, c=%.2f, nrep=%d, start_id=%d",
+  "Settings: p=%d, q=%d, nobs=%d, c=%.2f, nrep=%d, start_id=%d (oracle RegGMM)",
   p, q, nobs, c_val, nrep, start_id
 ))
 message("Output directory: ", out_dir)
 
-reggmm_csv <- file.path(out_dir, "result-RegGMM.csv")
-cspine_csv <- file.path(out_dir, "result-cspine.csv")
+oracle_csv <- file.path(out_dir, "result-RegGMM-oracle.csv")
 if (start_id == 1L) {
-  write(paste(metrics, collapse = ","), reggmm_csv)
-  write(paste(metrics, collapse = ","), cspine_csv)
+  write(paste(metrics, collapse = ","), oracle_csv)
 } else {
-  if (!file.exists(reggmm_csv)) stop("--start_id != 1 but output CSV does not exist: ", reggmm_csv)
-  if (!file.exists(cspine_csv)) stop("--start_id != 1 but output CSV does not exist: ", cspine_csv)
+  if (!file.exists(oracle_csv)) stop("--start_id != 1 but output CSV does not exist: ", oracle_csv)
 }
 
 # ---- Main loop ----
@@ -85,7 +82,11 @@ for (i in seq(start_id, nrep)) {
   omega_true <- array(ov, dim = c(p, p, nobs)) # p × p × n
 
   tictoc::tic()
-  g_result <- gmmreg_ssnal(x_mat, u_mat, alpha = 0.75, nl1 = 100, lambda_factor = 0.1, num_cores = 25)
+  g_result <- gmmreg_ssnal(
+    x_mat, u_mat,
+    alpha = 0.75, nl1 = 100, lambda_factor = 0.1, num_cores = 25,
+    mg_oracle = true_param$mg
+  )
   tictoc::toc()
   g_est <- est_omega_mu(g_result$beta, g_result$gamma, i_u, u_mat, p, nobs, "original")
   pgs <- c(
@@ -93,20 +94,6 @@ for (i in seq(start_id, nrep)) {
     performance_supp(g_est$mu, g_est$omega, mu_true, omega_true),
     snr
   )
-
-  tictoc::tic()
-  c_result <- cspine_ssnal(x_mat, u_mat, alpha = 0.75, nl1 = 100, lambda_factor = 0.1, num_cores = 25)
-  tictoc::toc()
-  c_est <- est_omega_mu(c_result$beta_raw, c_result$gamma, i_u, u_mat, p, nobs, "natural")
-  pcs <- c(
-    performance(c_result$beta_raw, c_result$gamma, tb, mg),
-    performance_supp(c_est$mu, c_est$omega, mu_true, omega_true),
-    snr
-  )
-
-  metric_mat <- rbind(round(pgs, 3), round(pcs, 3))
-  rownames(metric_mat) <- c("RegGMM", "cspine")
-  print(metric_mat)
-  write(paste(pgs, collapse = ","), reggmm_csv, append = TRUE)
-  write(paste(pcs, collapse = ","), cspine_csv, append = TRUE)
+  print(round(pgs, 3))
+  write(paste(pgs, collapse = ","), oracle_csv, append = TRUE)
 }
