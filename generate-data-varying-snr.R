@@ -4,8 +4,8 @@ suppressPackageStartupMessages(library(MASS))
 p <- 25L
 q <- 50L
 n <- 200L
-n_rep <- 100L
-c_vals <- round(sqrt(seq(0.025, 0.125, 0.025) / 0.083), 2)
+n_rep <- 5L
+c_vals <- round(sqrt(c(0.01, seq(0.025, 0.1, 0.025)) / 0.083), 2)
 pd_tol <- 1e-6
 pd_fail_thresh <- 0.01
 master_seed <- 8472L
@@ -109,7 +109,7 @@ for (ci in seq_along(c_vals)) {
     message(sprintf("  avg snr = %.4f", avg_snr))
     c_str <- gsub("\\.", "p", as.character(c_val))
     outpath <- file.path("data", sprintf("p%dq%d-n%d-varying-snr-c%s.rds", p, q, n, c_str))
-    saveRDS(reps, outpath)
+    # saveRDS(reps, outpath)
     message("Saved ", outpath)
   }
 }

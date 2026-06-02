@@ -1,83 +1,121 @@
-suppressPackageStartupMessages(library(tidyverse))
-suppressPackageStartupMessages(library(ggthemr))
-
-c_results <- readRDS("out/p25q10-n300-natural-varying-sparsity-result-cspine.rds")
-g_results <- readRDS("out/p25q10-n300-natural-varying-sparsity-result-RegGMM.rds")
-
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(tidyr))
 ggthemr::ggthemr("fresh")
-tibble(
-  s_beta = c_results[, "s_beta"], err =
-    c_results[, "beta_err"] + c_results[, "gamma_err"]
-) |>
-  ggplot(mapping = aes(x = s_beta, y = err)) +
-  geom_point(alpha = 0.8, shape = 4, color = swatch()[3], size = 7) +
-  # stat_function(fun = \(x) val(theta, x), linetype = "dashed") +
-  ylab(expression(beta[~ ~err] + gamma[~err])) +
-  xlab(expression(s[B])) +
-  theme(
-    axis.title = element_text(size = 40),
-    axis.text = element_text(size = 30)
+
+dirs <- list.dirs("out", recursive = FALSE)
+
+# ---- Varying delta ----
+
+parse_dir_name <- function(name) {
+  m <- regmatches(name, regexec("p(\\d+)q(\\d+)-n(\\d+)-d([0-9.]+)", name))[[1]]
+  if (length(m) == 0) {
+    return(NULL)
+  }
+  list(p = as.integer(m[2]), q = as.integer(m[3]), n = as.integer(m[4]), d = as.numeric(m[5]))
+}
+
+rows <- list()
+for (d in dirs) {
+  params <- tryCatch(parse_dir_name(basename(d)), error = function(e) NULL)
+  if (is.null(params)) next
+  if (params$p != 25 || params$q != 50 || params$n != 200) next
+  method_files <- list.files(d, pattern = "^result-.*\\.csv$", full.names = FALSE)
+  methods <- sub("^result-(.+)\\.csv$", "\\1", method_files)
+  for (method in methods) {
+    f <- file.path(d, paste0("result-", method, ".csv"))
+    if (!file.exists(f)) next
+    df <- read.csv(f)
+    df$p <- params$p
+    df$q <- params$q
+    df$n <- params$n
+    df$d <- params$d
+    df$method <- method
+    rows <- c(rows, list(df))
+  }
+}
+
+if (length(rows) > 0) {
+  method_labels <- c(cspine = "cspine", RegGMM = "RegGMM", mtRegGMM = "mt-RegGMM")
+  data <- bind_rows(rows) |>
+    mutate(d = factor(d)) |>
+    filter(method %in% names(method_labels))
+
+  if (nrow(data) > 0) {
+    present_methods <- intersect(names(method_labels), unique(data$method))
+    data$method <- factor(data$method, levels = present_methods, labels = method_labels[present_methods])
+
+    p_tpr <- ggplot(data, aes(x = d, y = tpr, fill = method)) +
+      geom_boxplot(outlier.size = 0.8, position = position_dodge(0.8)) +
+      labs(x = expression(delta), y = "TPR", fill = "Method") +
+      scale_fill_brewer(palette = "Set2") +
+      theme(legend.position = "bottom", legend.direction = "horizontal")
+
+    p_beta <- ggplot(data, aes(x = d, y = beta_err, fill = method)) +
+      geom_boxplot(outlier.size = 0.8, position = position_dodge(0.8)) +
+      labs(x = expression(delta), y = expression(beta ~ error), fill = "Method") +
+      scale_fill_brewer(palette = "Set2") +
+      theme(legend.position = "bottom", legend.direction = "horizontal")
+
+    # ggsave("out/plot_tpr.pdf", p_tpr, width = 7, height = 4)
+    ggsave("out/plot_beta_err.pdf", p_beta, width = 7, height = 4)
+    message("Saved out/plot_beta_err.pdf")
+  }
+}
+
+# ---- Varying SNR ----
+
+parse_snr_dir <- function(name) {
+  m <- regmatches(name, regexec("p(\\d+)q(\\d+)-n(\\d+)-varying-snr-c(\\d+)p(\\d+)", name))[[1]]
+  if (length(m) == 0) {
+    return(NULL)
+  }
+  list(
+    p = as.integer(m[2]),
+    q = as.integer(m[3]),
+    n = as.integer(m[4]),
+    c = as.numeric(paste0(m[5], ".", m[6]))
   )
-ggsave("s_beta_err.pdf")
+}
 
-c_results_g <- read_csv("out/p25q10-n300-natural-varying-sparsity-gamma/result-cspine.csv")
-g_results_g <- read_csv("out/p25q10-n300-natural-varying-sparsity-gamma/result-RegGMM.csv")
-tibble(
-  s_gamma = c_results_g$s_gamma,
-  err = c_results_g$beta_err + c_results_g$gamma_err
-) |>
-  ggplot(mapping = aes(x = s_gamma, y = err)) +
-  geom_point(alpha = 0.8, shape = 4, color = swatch()[3], size = 7) +
-  # stat_function(fun = \(x) val(theta, x), linetype = "dashed") +
-  ylab(expression(beta[~ ~err] + gamma[~err])) +
-  xlab(expression(s[Gamma])) +
-  theme(
-    axis.title = element_text(size = 40),
-    axis.text = element_text(size = 30)
-  )
-ggsave("s_gamma_err.pdf")
+rows <- list()
+for (d in dirs) {
+  params <- tryCatch(parse_snr_dir(basename(d)), error = function(e) NULL)
+  if (is.null(params)) next
+  method_files <- list.files(d, pattern = "^result-.*\\.csv$", full.names = FALSE)
+  methods <- sub("^result-(.+)\\.csv$", "\\1", method_files)
+  for (method in methods) {
+    f <- file.path(d, paste0("result-", method, ".csv"))
+    if (!file.exists(f)) next
+    df <- read.csv(f)
+    df$p <- params$p
+    df$q <- params$q
+    df$n <- params$n
+    df$c <- params$c
+    df$method <- method
+    rows <- c(rows, list(df))
+  }
+}
 
+if (length(rows) > 0) {
+  data <- bind_rows(rows) |>
+    filter(method %in% c("cspine", "RegGMM"))
 
-# val <- function(theta, x) {
-#   m1 <- theta[1]
-#   m2 <- theta[2]
-#   b1 <- theta[3]
-#   b2 <- theta[4]
-#   sqrt(x * m1 + b1) * m2 + b2
-# }
+  if (nrow(data) > 0) {
+    data$method <- as.factor(data$method)
 
-# fn <- function(theta, x, y) {
-#   sum((y - (val(theta, x)))^2)
-# }
+    snrs <- c(0.01, seq(0.025, 0.1, by = 0.025))
+    snr_means <- data.frame(c = sort(unique(data$c)), snr_mean = snrs)
+    data <- left_join(data, snr_means, by = "c") |>
+      mutate(log_snr = log10(snr_mean), snr_mean = factor(snr_mean, levels = snrs))
 
-# inds <- which(df$s_beta < 80)
-# opt <- optim(rep(1, 4), fn, NULL, df$s_beta[inds], df$err[inds])
-# (theta <- opt$par)
-# axis <- seq(50, 200)
+    p_beta <- ggplot(data, aes(x = snr_mean, y = beta_err, fill = method, group = interaction(c, method))) +
+      geom_boxplot() +
+      labs(x = "SNR", y = expression(beta ~ error), fill = "Method") +
+      scale_fill_brewer(palette = "Set2") +
+      theme(legend.position = "bottom", legend.direction = "horizontal")
 
-c_results_g <- readRDS("out/p25q50-n300-original-varying-sparsity-result-gamma-cspine.rds")
-g_results_g <- readRDS("out/p25q50-n300-original-varying-sparsity-result-gamma-RegGMM.rds")
-ggthemr::ggthemr("fresh")
-tibble(
-  q = c(c_results_g$s_gamma, g_results_g$s_gamma),
-  err = c(c_results_g$beta_err, g_results_g$beta_err),
-  tpr = c(c_results_g$tpr, g_results_g$tpr),
-  method = rep(c("cspine", "RegGMM"), each = nrow(c_results_g))
-) |>
-  ggplot(mapping = aes(x = q, y = err, color = method, shape = method)) +
-  geom_jitter(alpha = 0.8, width = 20, size = 5) +
-  geom_smooth(se = FALSE) +
-  scale_shape_manual(values = c(4, 21)) +
-  scale_color_manual(values = swatch()[3:2]) +
-  ylab(expression(beta[~err])) +
-  xlab(expression(s[Gamma])) +
-  theme(
-    plot.margin = margin(l = 10, r = 5),
-    axis.title = element_text(size = 35),
-    axis.text = element_text(size = 25),
-    legend.title = element_text(size = 25),
-    legend.text = element_text(size = 20),
-    legend.key.size = unit(2, "cm"),
-    legend.position = c(0.9, 0.1),
-  )
-ggsave("s_gamma_err_compare.pdf")
+    ggsave("out/plot_snr_beta_err.pdf", p_beta, width = 7, height = 4)
+    message("Saved out/plot_snr_beta_err.pdf")
+  }
+}

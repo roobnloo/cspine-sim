@@ -1,8 +1,18 @@
 library(dplyr)
 library(stringr)
 
-out_dir <- "out"
-target_d <- 0.00
+# Parse args: --d=<num> required, --out_dir=<str> optional
+args <- commandArgs(trailingOnly = TRUE)
+arg_map <- list()
+for (a in args) {
+  m <- regmatches(a, regexec("^--([^=]+)=(.+)$", a))[[1]]
+  if (length(m) == 3) arg_map[[m[2]]] <- m[3]
+}
+
+if (is.null(arg_map[["d"]])) stop("Required argument --d is missing. Usage: Rscript make-tables.R --d=1")
+target_d <- as.numeric(arg_map[["d"]])
+if (is.na(target_d)) stop("--d must be a numeric value")
+out_dir <- if (!is.null(arg_map[["out_dir"]])) arg_map[["out_dir"]] else "out"
 
 parse_dir_name <- function(name) {
   m <- regmatches(name, regexec("p(\\d+)q(\\d+)-n(\\d+)-d([0-9.]+)", name))[[1]]
@@ -24,6 +34,7 @@ for (d in dirs) {
 
   for (method in methods) {
     f <- file.path(d, paste0("result-", method, ".csv"))
+    if (!file.exists(f)) next
     df <- read.csv(f)
     means <- as.list(colMeans(df, na.rm = TRUE))
     sds <- as.list(apply(df, 2, sd, na.rm = TRUE))
@@ -65,11 +76,9 @@ embolden <- function(method_lines, metric_vals, bold_dirs,
     col_vals <- sapply(metric_vals[compete_ids], function(v) v[j])
     if (any(is.na(col_vals))) next # skip bolding if any competing method is NA
 
-    if (bd == "G") {
-      local_ids <- which(col_vals == max(col_vals))
-    } else {
-      local_ids <- which(col_vals == min(col_vals))
-    }
+    fmt_all <- sprintf("%1.3f", col_vals)
+    best_fmt <- if (bd == "G") sprintf("%1.3f", max(col_vals)) else sprintf("%1.3f", min(col_vals))
+    local_ids <- which(fmt_all == best_fmt)
     best_ids <- compete_ids[local_ids]
     formatted <- sprintf("%1.3f", col_vals[local_ids])
     for (k in seq_along(best_ids)) {
@@ -84,10 +93,12 @@ embolden <- function(method_lines, metric_vals, bold_dirs,
   method_lines
 }
 
-make_table_d1 <- function() {
+make_table <- function() {
   compared_methods <- c("cspine", "RegGMM", "mtRegGMM", "RegGMM-oracle")
   metrics <- c("tpr", "fpr", "beta_err", "omega_err")
   bold_dirs <- c("G", "L", "L", "L")
+
+  d_label <- sprintf("%g", target_d)
 
   settings <- mean_df |>
     select(p, q, n) |>
@@ -101,7 +112,7 @@ make_table_d1 <- function() {
   latex_code <- paste0(latex_code, "  \\hline\n")
   latex_code <- paste0(
     latex_code,
-    r"($n$ & $(p, q)$ & Method & $\text{TPR}$ & $\text{FPR}$ & $\vec\beta_\text{err}$ & $\mat\Omega_\text{err}$ \\)", "\n"
+    r"($n$ & $q$ & Method & $\text{TPR}$ & $\text{FPR}$ & $\vec\beta_\text{err}$ & $\mat\Omega_\text{err}$ \\)", "\n"
   )
   latex_code <- paste0(latex_code, "  \\hline\n")
 
@@ -129,7 +140,7 @@ make_table_d1 <- function() {
 
       prefix <- if (mi == 1) {
         n_str <- if (is.na(next_n) || next_n != sn) as.character(sn) else ""
-        paste0(n_str, " & \\multirow{", num_active, "}{*}{$(", sp, ", ", sq, ")$}")
+        paste0(n_str, " & \\multirow{", num_active, "}{*}{$", sq, "$}")
       } else {
         " & "
       }
@@ -149,9 +160,14 @@ make_table_d1 <- function() {
       )
     }
 
-    # method_lines <- embolden(method_lines, metric_vals, bold_dirs,
-    #   embolden_methods = setdiff(active_methods, "RegGMM-oracle")
-    # )
+    oracle_idx <- which(names(method_lines) == "RegGMM-oracle")
+    if (length(oracle_idx) > 0) {
+      method_lines[oracle_idx] <- paste0("  \\cline{3-7}\n", method_lines[oracle_idx])
+    }
+
+    method_lines <- embolden(method_lines, metric_vals, bold_dirs,
+      embolden_methods = setdiff(active_methods, "RegGMM-oracle")
+    )
     latex_code <- paste0(latex_code, paste0(method_lines, collapse = ""))
     hline_str <- if (!is.na(next_n) && next_n == sn) "  \\cline{2-7}\n" else "  \\hline\n"
     latex_code <- paste0(latex_code, hline_str)
@@ -160,12 +176,15 @@ make_table_d1 <- function() {
   latex_code <- paste0(latex_code, "\\end{tabular}\n")
   latex_code <- paste0(
     latex_code,
-    r"(\caption{Mean and standard deviation of performance metrics over simulated data sets, $\delta = 1$.})", "\n"
+    sprintf(
+      r"(\caption{Mean and standard deviation of performance metrics over simulated data sets, $\delta = %s$.})",
+      d_label
+    ), "\n"
   )
-  latex_code <- paste0(latex_code, "\\label{tbl:sim-d1}\n")
+  latex_code <- paste0(latex_code, sprintf("\\label{tbl:sim-d%s}\n", d_label))
   latex_code <- paste0(latex_code, "\\end{table}\n")
 
   cat(latex_code)
 }
 
-make_table_d1()
+make_table()

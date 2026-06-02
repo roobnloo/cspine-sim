@@ -61,9 +61,11 @@ generate_mg <- function(opts = gamma_options()) {
 }
 
 beta_options <- function(
-    p = 25, q = 50, ve = 0.01, nz_cov = 5, lim = c(0.35, 0.5), pwr0 = 1, sigma2 = 1) {
+    p = 25, q = 50, ve = 0.01, nz_cov = 5, lim = c(0.35, 0.5), pwr0 = 1, sigma2 = 1,
+    pi0 = NULL) {
   list(
-    p = p, q = q, ve = ve, nz_cov = nz_cov, lim = lim, pwr0 = pwr0, sigma2 = sigma2
+    p = p, q = q, ve = ve, nz_cov = nz_cov, lim = lim, pwr0 = pwr0, sigma2 = sigma2,
+    pi0 = pi0
   )
 }
 
@@ -78,20 +80,44 @@ generate_tb <- function(opts = beta_options()) {
   # degs<-c(2,2,1,1,1,1,rep(0,p-6))
   # g <- sample_degseq(degs, method="simple.no.multiple") #generate with given degrees
 
-  g1 <- sample_pa(p, power = opts$pwr0, directed = FALSE) # scale-free network
-  A <- as_adjacency_matrix(g1, sparse = FALSE)
-  rind <- sample(1:p, p, replace = FALSE)
-  A <- A[rind, rind]
-  tb <- matrix(0, p, p)
-  tb[lower.tri(A) & A > 0] <- sample(
-    c(
-      runif(sum(A), -u, -l),
-      runif(sum(A), l, u)
-    ),
-    sum(A) / 2,
-    replace = FALSE
-  )
-  tB[, , 1] <- tb + t(tb)
+  if (is.null(opts$pi0)) {
+    g1 <- sample_pa(p, power = opts$pwr0, directed = FALSE) # scale-free network
+    A <- as_adjacency_matrix(g1, sparse = FALSE)
+    rind <- sample(1:p, p, replace = FALSE)
+    A <- A[rind, rind]
+    tb <- matrix(0, p, p)
+    tb[lower.tri(A) & A > 0] <- sample(
+      c(
+        runif(sum(A), -u, -l),
+        runif(sum(A), l, u)
+      ),
+      sum(A) / 2,
+      replace = FALSE
+    )
+    tB[, , 1] <- tb + t(tb)
+  } else {
+    g1 <- sample_gnp(p, opts$pi0, directed = FALSE, loops = FALSE) # ER random graph
+    A <- as_adjacency_matrix(g1, sparse = FALSE)
+    rind <- sample(1:p, p, replace = FALSE)
+    A <- A[rind, rind]
+    tb <- matrix(0, p, p)
+    tb[lower.tri(A) & A > 0] <- sample(
+      c(
+        runif(sum(A), -u, -l),
+        runif(sum(A), l, u)
+      ),
+      sum(A) / 2,
+      replace = FALSE
+    )
+    tB[, , 1] <- tb + t(tb)
+    # PD trick: add |lambda_min| + eps to diagonal, then rescale to unit diagonal
+    lam_min <- min(eigen(tB[, , 1], symmetric = TRUE, only.values = TRUE)$values)
+    delta <- 1e-6
+    tB[, , 1] <- tB[, , 1] + diag(abs(lam_min) + delta, p)
+    d_vec <- diag(tB[, , 1])
+    D_inv_sqrt <- diag(1 / sqrt(d_vec), p)
+    tB[, , 1] <- D_inv_sqrt %*% tB[, , 1] %*% D_inv_sqrt
+  }
 
   if (opts$ve > 0) {
     for (j in seq(2, opts$nz_cov + 1)) {
@@ -118,14 +144,16 @@ generate_tb <- function(opts = beta_options()) {
     }
   }
 
-  tB_temp <- array(0, dim = c(p, p, q + 1))
-  for (j in 1:p) {
-    # ensure diagonal dominance
-    tB_temp[j, , ] <- tB[j, , ] / (sum(abs(tB[j, , ])) * 1.5)
-  }
+  if (is.null(opts$pi0)) {
+    tB_temp <- array(0, dim = c(p, p, q + 1))
+    for (j in 1:p) {
+      # ensure diagonal dominance
+      tB_temp[j, , ] <- tB[j, , ] / (sum(abs(tB[j, , ])) * 1.5)
+    }
 
-  for (j in 1:(q + 1)) {
-    tB[, , j] <- (tB_temp[, , j] + t(tB_temp[, , j])) / 2
+    for (j in 1:(q + 1)) {
+      tB[, , j] <- (tB_temp[, , j] + t(tB_temp[, , j])) / 2
+    }
   }
 
   return(tB)
