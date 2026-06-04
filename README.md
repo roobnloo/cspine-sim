@@ -1,14 +1,15 @@
 # cspine-sim
 
-Simulation code accompanying the manuscript *Convex estimation of Gaussian graphical regression models with covariates*.
-The methods are implemented in the `\impl` directory.
+Simulation code accompanying the manuscript [Convex Estimation of Gaussian Graphical Regression Models with Covariates](https://arxiv.org/abs/2410.06326).
+
+The methods are implemented in the `impl/` directory.
 
 ## Setup
 
 Install R package dependencies by running:
 
-```r
-source("requirements.R")
+```bash
+Rscript requirements.R
 ```
 
 ## Running simulations
